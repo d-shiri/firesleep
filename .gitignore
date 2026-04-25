@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# OS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.iml
+
+# Android build outputs — project-level gitignore in android/ handles the rest
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties

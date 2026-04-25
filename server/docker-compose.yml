@@ -1,0 +1,20 @@
+services:
+  tv-helper:
+    build: .
+    image: tv-helper:latest
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      TV_IP: ${TV_IP:?set TV_IP}
+      TV_TOKEN: ${TV_TOKEN:?set TV_TOKEN}
+      LG_KEY_FILE: /data/lg_key.json
+    volumes:
+      - lg-key:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  lg-key:

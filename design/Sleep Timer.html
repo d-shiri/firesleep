@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Lullaby · Sleep Timer for Fire TV</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; font-family: Inter, system-ui, sans-serif; }
+  body { height: 100vh; overflow: hidden; }
+
+  /* Tweaks panel */
+  .tweaks-panel {
+    position: fixed; bottom: 24px; right: 24px;
+    width: 320px;
+    background: #1a1815; color: #eceae5;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05);
+    padding: 20px;
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 13px;
+    z-index: 9999;
+    display: none;
+  }
+  .tweaks-panel.active { display: block; }
+  .tweaks-panel h3 {
+    margin: 0 0 14px;
+    font-size: 11px; font-weight: 500;
+    letter-spacing: 3px; text-transform: uppercase;
+    color: rgba(236,234,229,0.5);
+  }
+  .tweak-row {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-bottom: 14px;
+  }
+  .tweak-row label {
+    font-size: 12px;
+    color: rgba(236,234,229,0.7);
+  }
+  .tweak-row .seg {
+    display: flex;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .tweak-row .seg button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: rgba(236,234,229,0.6);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .tweak-row .seg button.active {
+    background: #eceae5;
+    color: #1a1815;
+    font-weight: 500;
+  }
+  .tweak-row input[type="range"] { width: 100%; accent-color: #eceae5; }
+  .tweak-row .val {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: rgba(236,234,229,0.5);
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<div id="tweaks" class="tweaks-panel">
+  <h3>Tweaks</h3>
+
+  <div class="tweak-row">
+    <label>Home focus (preset)</label>
+    <div class="seg" data-key="homeFocus">
+      <button data-v="0">15m</button>
+      <button data-v="1">30m</button>
+      <button data-v="2" class="active">45m</button>
+      <button data-v="3">60m</button>
+      <button data-v="4">90m</button>
+    </div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Custom picker — hours <span id="v-custom-hours" class="val">1</span></label>
+    <input type="range" min="0" max="8" step="1" value="1" data-key="customHours" />
+  </div>
+
+  <div class="tweak-row">
+    <label>Custom picker — minutes <span id="v-custom-minutes" class="val">20</span></label>
+    <input type="range" min="0" max="55" step="5" value="20" data-key="customMinutes" />
+  </div>
+
+  <div class="tweak-row">
+    <label>Custom picker — focus column</label>
+    <div class="seg" data-key="customCol">
+      <button data-v="0">Hours</button>
+      <button data-v="1" class="active">Minutes</button>
+    </div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Overlay focus <span id="v-overlay-focus" class="val">+10 min</span></label>
+    <div class="seg" data-key="overlayFocus">
+      <button data-v="0" class="active">+10 min</button>
+      <button data-v="1">Keep watching</button>
+    </div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Overlay countdown <span id="v-overlay-seconds" class="val">45s</span></label>
+    <input type="range" min="5" max="60" step="5" value="45" data-key="overlaySeconds" />
+  </div>
+</div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="components/TVFrame.jsx"></script>
+<script type="text/babel" src="components/VariantD.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+  const TV_W = 1120;
+  const TV_H = 630;
+
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "overlayFocus": 0,
+    "overlaySeconds": 45,
+    "customHours": 1,
+    "customMinutes": 20,
+    "customCol": 1,
+    "homeFocus": 2
+  }/*EDITMODE-END*/;
+
+  function Screen({ children }) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <TVFrame width={TV_W} height={TV_H}>{children}</TVFrame>
+      </div>
+    );
+  }
+
+  function App({ tweaks }) {
+    return (
+      <DesignCanvas>
+        <DCSection id="intro" title="Lullaby · Sleep Timer for Fire TV" subtitle="Dark, warm-accent direction · runs in background · gentle fade to sleep">
+          <DCArtboard id="context" label="Brief" width={TV_W} height={TV_H}>
+            <div style={{
+              width: '100%', height: '100%',
+              background: '#fafaf7', color: '#2a251f',
+              fontFamily: 'Inter, system-ui, sans-serif',
+              padding: 56,
+              display: 'flex', flexDirection: 'column', gap: 20,
+              boxSizing: 'border-box',
+              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.05)',
+            }}>
+              <div style={{ fontSize: 14, letterSpacing: 3, textTransform: 'uppercase', color: '#888' }}>Brief</div>
+              <div style={{ fontSize: 32, fontWeight: 300, lineHeight: 1.3, letterSpacing: -0.5 }}>
+                Set a timer → TV fades audio &amp; brightness over the final minute → shuts off.
+              </div>
+              <div style={{ fontSize: 15, color: '#666', lineHeight: 1.6 }}>
+                <div><b>Inputs</b> Preset chips (15/30/45/60/90) + custom length</div>
+                <div><b>Running</b> Hidden — user keeps watching</div>
+                <div><b>Last 60s</b> Top-right card with <b>+10 min</b> or <b>Keep watching</b></div>
+                <div><b>Input</b> D-pad remote only</div>
+              </div>
+              <div style={{ flex: 1 }} />
+              <div style={{ fontSize: 12, color: '#999', fontFamily: 'ui-monospace, monospace' }}>
+                Flow: Home → (Custom) → Confirmation → [invisible while watching] → Last-60s overlay → sleep.<br/>
+                Use the <b>Tweaks</b> toggle (toolbar) to drive focus states and custom values.
+              </div>
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="flow" title="Flow" subtitle="The full sequence, left to right">
+          <DCArtboard id="d-home" label="1 · Home · presets" width={TV_W} height={TV_H}>
+            <Screen><VariantD_Home focused={tweaks.homeFocus} /></Screen>
+          </DCArtboard>
+          <DCArtboard id="d-custom" label="2 · Custom length picker" width={TV_W} height={TV_H}>
+            <Screen>
+              <VariantD_Custom
+                hours={tweaks.customHours}
+                minutes={tweaks.customMinutes}
+                focusedCol={tweaks.customCol}
+              />
+            </Screen>
+          </DCArtboard>
+          <DCArtboard id="d-started" label="3 · Confirmation (briefly)" width={TV_W} height={TV_H}>
+            <Screen><VariantD_Started minutes={45} /></Screen>
+          </DCArtboard>
+          <DCArtboard id="d-overlay" label="4 · Last-60s corner overlay" width={TV_W} height={TV_H}>
+            <Screen><VariantD_Overlay seconds={tweaks.overlaySeconds} focused={tweaks.overlayFocus} /></Screen>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+  }
+
+  // ── Tweaks wiring ────────────────────────────────────────────
+  const state = { ...TWEAK_DEFAULTS };
+  let renderRoot = null;
+
+  function render() {
+    if (!renderRoot) renderRoot = ReactDOM.createRoot(document.getElementById('root'));
+    renderRoot.render(<App tweaks={state} />);
+  }
+
+  function updateValueLabels() {
+    const m = {
+      'v-overlay-focus': state.overlayFocus === 0 ? '+10 min' : 'Keep watching',
+      'v-overlay-seconds': state.overlaySeconds + 's',
+      'v-custom-hours': String(state.customHours),
+      'v-custom-minutes': String(state.customMinutes),
+    };
+    for (const [id, val] of Object.entries(m)) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    }
+  }
+
+  function syncControls() {
+    document.querySelectorAll('.tweaks-panel .seg').forEach(seg => {
+      const key = seg.dataset.key;
+      seg.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('active', Number(b.dataset.v) === state[key]);
+      });
+    });
+    document.querySelectorAll('.tweaks-panel input[type="range"]').forEach(inp => {
+      const key = inp.dataset.key;
+      inp.value = state[key];
+    });
+    updateValueLabels();
+  }
+
+  function setKey(key, val) {
+    state[key] = val;
+    try {
+      window.parent.postMessage({
+        type: '__edit_mode_set_keys',
+        edits: { [key]: val },
+      }, '*');
+    } catch (e) {}
+    syncControls();
+    render();
+  }
+
+  document.querySelectorAll('.tweaks-panel .seg').forEach(seg => {
+    seg.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setKey(seg.dataset.key, Number(btn.dataset.v));
+      });
+    });
+  });
+
+  document.querySelectorAll('.tweaks-panel input[type="range"]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      setKey(inp.dataset.key, Number(inp.value));
+    });
+  });
+
+  window.addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (d.type === '__activate_edit_mode') {
+      document.getElementById('tweaks').classList.add('active');
+    } else if (d.type === '__deactivate_edit_mode') {
+      document.getElementById('tweaks').classList.remove('active');
+    }
+  });
+  try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch (e) {}
+
+  syncControls();
+  render();
+</script>
+</body>
+</html>

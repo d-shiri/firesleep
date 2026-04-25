@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FireSleep</string>
+    <string name="eyebrow_lullaby">◐ FireSleep</string>
+    <string name="eyebrow_lullaby_set">◐ FireSleep set</string>
+    <string name="hero_line_1">Drift off.</string>
+    <string name="hero_line_2">We\'ll take</string>
+    <string name="hero_line_3">care of the</string>
+    <string name="hero_line_4">TV.</string>
+    <string name="hero_sub">Audio and brightness fade over the final minute. No jarring shutoff.</string>
+    <string name="hint_home">▲ ▼ Choose · ● Begin</string>
+    <string name="hint_custom">◀ ▶ Switch column · ▲ ▼ Adjust value · ● Begin</string>
+    <string name="hint_overlay">◀ ▶ choose · ● confirm · ignore to sleep</string>
+    <string name="custom_length">Custom length</string>
+    <string name="back">◀ Back</string>
+    <string name="add_custom_length">+ Custom length</string>
+    <string name="begin">● Begin</string>
+    <string name="begin_badge">● BEGIN</string>
+    <string name="total">Total</string>
+    <string name="lights_out">Lights out</string>
+    <string name="hours">hours</string>
+    <string name="minutes">minutes</string>
+    <string name="fading_to_sleep">Fading to sleep</string>
+    <string name="plus_ten_minutes">+ 10 minutes</string>
+    <string name="keep_watching">Keep watching</string>
+    <string name="settings_title">First-time setup</string>
+    <string name="settings_sub">Point FireSleep at the Raspberry Pi that speaks to your TV.</string>
+    <string name="settings_ip">Pi IP address</string>
+    <string name="settings_ip_hint">e.g. 192.168.2.15</string>
+    <string name="settings_token">Shared token</string>
+    <string name="settings_token_hint">X-Token from /etc/tv-helper/env</string>
+    <string name="save">Save</string>
+    <string name="test_connection">Test connection</string>
+    <string name="notif_channel_name">Sleep timer</string>
+    <string name="notif_channel_desc">Shown while a sleep timer is running</string>
+    <string name="notif_title">FireSleep timer</string>
+    <string name="notif_running">TV off in %1$s</string>
+    <string name="error_poweroff">Couldn\'t reach the Pi — TV will not turn off.\n%1$s</string>
+</resources>
