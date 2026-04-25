@@ -53,7 +53,10 @@ fun ConfirmScreen(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Moon(size = 120.dp, phase = 0f)
             Spacer(Modifier.height(48.dp))
-            Text("◐ FireSleep set", style = eyebrow(Tokens.Accent).copy(fontSize = 22.sp))
+            LogoEyebrow(
+                wordmark = "FireSleep set",
+                style = eyebrow(Tokens.Accent).copy(fontSize = 22.sp),
+            )
             Spacer(Modifier.height(32.dp))
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(minutes.toString(), style = heroNumeric())

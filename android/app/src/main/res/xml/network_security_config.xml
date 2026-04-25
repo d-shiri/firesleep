@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android's <domain> directive only accepts hostnames or IP literals — not
+  CIDR ranges — so we can't allow only RFC1918 here. The app talks to
+  exactly one user-entered LAN IP on port 8765 and never makes any other
+  HTTP request, so we open cleartext globally and let runtime behavior be
+  the trust boundary.
+-->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">10.0.0.0/8</domain>
-        <domain includeSubdomains="true">172.16.0.0/12</domain>
-        <domain includeSubdomains="true">192.168.0.0/16</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

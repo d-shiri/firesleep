@@ -1,4 +1,4 @@
-# FireSleep helper — the thing that actually turns the TV off
+# FireSleep bridge — the thing that actually turns the TV off
 
 A tiny FastAPI service that runs on a box on your LAN (a Raspberry Pi is the
 obvious choice — always on, always idle). The Fire TV app (`../android/`)
@@ -28,7 +28,7 @@ If you add a new backend, please:
 
 1. Keep the HTTP surface (`POST /poweroff`) exactly as-is so the Fire TV app
    doesn't need to change.
-2. Drop it in as `tv_helper_<brand>.py` and gate it with an env var
+2. Drop it in as `bridge_<brand>.py` and gate it with an env var
    (e.g. `TV_BRAND=samsung`).
 3. Add a short "how to pair" subsection to this README.
 
@@ -42,7 +42,7 @@ If you add a new backend, please:
 
 ## Configuring `TV_HOST`
 
-The helper takes a hostname *or* an IP — whichever is more stable on your LAN.
+The bridge takes a hostname *or* an IP — whichever is more stable on your LAN.
 The hostname is resolved at every connect, so DHCP changes don't break it.
 
 | Approach                          | Works in Docker bridge? | Notes                                           |
@@ -64,12 +64,12 @@ client list.
 ## One-time pairing (LG webOS)
 
 The first time the Pi talks to the TV, webOS prompts for permission on the
-TV screen. Approve it — the helper writes `~/lg_key.json` so future sessions
+TV screen. Approve it — the bridge writes `~/lg_key.json` so future sessions
 skip the prompt.
 
 You can either:
 
-- **Use the helper itself:** start the service (see below), then `curl -X
+- **Use the bridge itself:** start the service (see below), then `curl -X
   POST http://<PI_IP>:8765/pair` and accept the prompt on the TV.
 - **Run the standalone script:** `cd server && TV_HOST=LGwebOSTV uv run
   test_pairing.py`.
@@ -94,29 +94,29 @@ volume (`lg-key`), and adds a healthcheck against `/health`.
 ### Docker (manual)
 
 ```bash
-docker build -t firesleep-helper .
-docker run -d --name firesleep-helper \
+docker build -t firesleep-bridge .
+docker run -d --name firesleep-bridge \
   --restart unless-stopped \
   -p 8765:8765 \
   -e TV_HOST=LGwebOSTV \
   -e LG_KEY_FILE=/data/lg_key.json \
   -v firesleep-key:/data \
-  firesleep-helper
+  firesleep-bridge
 ```
 
 ### systemd
 
-Drop env vars into `/etc/tv-helper/env`:
+Drop env vars into `/etc/firesleep-bridge/env`:
 
 ```
 TV_HOST=LGwebOSTV
 ```
 
-Install `tv-helper.service` into `/etc/systemd/system/` and:
+Install `firesleep-bridge.service` into `/etc/systemd/system/` and:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now tv-helper
+sudo systemctl enable --now firesleep-bridge
 ```
 
 ## Verifying
@@ -135,3 +135,23 @@ curl -X POST http://<PI_IP>:8765/poweroff
 |---------------|----------|----------------------------------------------------|
 | `TV_HOST`     | yes      | TV hostname or IP — resolved at every connect      |
 | `LG_KEY_FILE` | no       | Path to the cached pairing key file                |
+| `LOG_LEVEL`   | no       | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`      |
+
+## Logs
+
+Every HTTP request is logged to stdout with client IP, method, path, status,
+and elapsed ms. App-level events (DNS resolve, TV connect, pair save,
+power-off ack) are tagged under the `firesleep` logger.
+
+```
+$ docker compose logs -f firesleep-bridge
+firesleep-bridge  | 2026-04-25 09:42:11 INFO  firesleep | startup: TV_HOST=LGwebOSTV, key_file=/data/lg_key.json, paired=True
+firesleep-bridge  | 2026-04-25 09:42:30 INFO  firesleep | poweroff: starting
+firesleep-bridge  | 2026-04-25 09:42:30 INFO  firesleep | connecting to TV at 192.168.2.226 (paired=True)
+firesleep-bridge  | 2026-04-25 09:42:31 INFO  firesleep | poweroff: TV acknowledged
+firesleep-bridge  | 2026-04-25 09:42:31 INFO  firesleep | 192.168.2.50 POST /poweroff 200 412ms
+```
+
+`/health` requests log at `DEBUG` so the Docker healthcheck (every 30 s)
+doesn't drown out the interesting events. Set `LOG_LEVEL=DEBUG` if you want
+to see them too.

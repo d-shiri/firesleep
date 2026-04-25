@@ -19,12 +19,12 @@ Fire TV remote
     ↓ D-pad
 FireSleep app on the Fire TV Stick (this repo → android/)
     ↓ HTTP POST http://<pi>:8765/poweroff
-Helper service on a Raspberry Pi (this repo → server/)
+FireSleep bridge on a Raspberry Pi (this repo → server/)
     ↓ talks to the TV over the LAN
 Your TV → powers off
 ```
 
-The helper trusts your LAN — there's no token to copy or paste. Bind it to a
+The bridge trusts your LAN — there's no token to copy or paste. Bind it to a
 private interface, and the only thing that can reach it is whatever's on the
 same network as your Fire TV.
 
@@ -34,7 +34,7 @@ TV-vendor-specific bits (pairing state, WebSocket chatter, etc.). Keeping
 vendor logic on the Pi means:
 
 - The APK stays tiny — no Python, no WebSocket libs, no per-vendor SDKs.
-- Adding a new TV brand is a change to the Pi helper, not the app.
+- Adding a new TV brand is a change to the Pi bridge, not the app.
 
 ## TV compatibility
 
@@ -43,7 +43,7 @@ HTTP POST. Vendor-specific logic lives in `server/`.
 
 - **LG webOS (tested):** UR78 / webOS 23. Uses `aiowebostv` over the LG's
   WebSocket API. Works end-to-end; this is the path I actually run.
-- **Everything else:** should be straightforward. The Pi helper is a single
+- **Everything else:** should be straightforward. The Pi bridge is a single
   short FastAPI file — swap the `power_off()` implementation for your TV's
   control protocol and the app keeps working unchanged.
 
@@ -56,7 +56,7 @@ sticks are welcome.
 If you get this running with a Samsung, Sony, Vizio, Hisense, Roku TV, etc.,
 please open a PR. Ideal shape:
 
-- Drop a new helper file next to `server/tv_helper.py` (e.g. `tv_helper_samsung.py`).
+- Drop a new bridge file next to `server/bridge.py` (e.g. `bridge_samsung.py`).
 - Add a short section to `server/README.md` covering pairing + running.
 - If your TV needs a different port or extra headers, make it env-configurable
   rather than hardcoded.
@@ -69,7 +69,7 @@ stick, file an issue with the device model and `adb logcat` output.
 ```
 .
 ├── android/         # Sideloaded Fire TV app (Kotlin, Jetpack Compose for TV)
-├── server/          # Raspberry Pi helper (FastAPI + vendor-specific code)
+├── server/          # Raspberry Pi bridge (FastAPI + vendor-specific code)
 ├── design/          # Design spec and HTML/JSX mocks for the 4 screens
 └── plan.md          # Original project brief / decisions log
 ```
@@ -115,16 +115,17 @@ On first launch it asks for the Pi's LAN IP — that's it.
 
 ## First-run configuration
 
-- **Pi IP:** LAN IP of the Pi running `server/tv_helper.py`.
+- **Pi IP:** LAN IP of the Pi running `server/bridge.py`.
 
 Stored in `EncryptedSharedPreferences` on the device. Nothing else to enter.
 
 ## Security posture
 
 - `INTERNET` only. No storage, no location, no camera, no mic.
-- `cleartextTrafficPermitted` is scoped to RFC1918 LAN ranges via
-  `network_security_config.xml` — HTTP outside the LAN is blocked.
-- The Pi helper has no remote auth — it trusts whoever can reach it on the
+- Cleartext HTTP is allowed app-wide (Android's network-security-config can't
+  restrict it to a CIDR range), but the app only ever talks to one
+  user-entered LAN IP on `:8765` — that's the runtime trust boundary.
+- The Pi bridge has no remote auth — it trusts whoever can reach it on the
   LAN. Bind it to a private interface (don't port-forward `8765`) and that's
   the entire trust boundary.
 - Nothing leaves your LAN. No cloud, no analytics, no phone-home.

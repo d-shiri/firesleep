@@ -62,7 +62,7 @@ fun SettingsScreen(onSaved: () -> Unit) {
             modifier = Modifier.width(720.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Text("◐ FireSleep", style = eyebrow(Tokens.Accent))
+            LogoEyebrow()
             Text("First-time setup", style = heroHeadline().copy(fontSize = 56.sp))
             Text(
                 "Point FireSleep at the Raspberry Pi that powers your TV off.",
@@ -150,40 +150,49 @@ private fun LabeledField(
 
 @Composable
 private fun PrimaryButton(text: String, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val source = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Tokens.Accent)
-            .border(
-                width = 2.dp,
-                color = if (focused) Tokens.AccentBorderFaint else Color.Transparent,
-                shape = RoundedCornerShape(12.dp),
-            )
-            .onFocusChanged { focused = it.isFocused }
-            .focusable(interactionSource = source)
-            .clickable(interactionSource = source, indication = null) { onClick() }
-            .padding(horizontal = 28.dp, vertical = 18.dp),
-    ) {
-        Text(
-            text,
-            style = body(Tokens.AccentOn).copy(fontSize = 22.sp, fontWeight = FontWeight.Medium),
-        )
-    }
+    FocusableButton(
+        text = text,
+        onClick = onClick,
+        unfocusedBg = Tokens.Accent,
+        unfocusedFg = Tokens.AccentOn,
+        unfocusedBorder = Color.Transparent,
+        weight = FontWeight.Medium,
+    )
 }
 
 @Composable
 private fun SecondaryButton(text: String, onClick: () -> Unit) {
+    FocusableButton(
+        text = text,
+        onClick = onClick,
+        unfocusedBg = Tokens.SurfaceSoft,
+        unfocusedFg = Tokens.TextBody,
+        unfocusedBorder = Tokens.Divider,
+        weight = FontWeight.Normal,
+    )
+}
+
+@Composable
+private fun FocusableButton(
+    text: String,
+    onClick: () -> Unit,
+    unfocusedBg: Color,
+    unfocusedFg: Color,
+    unfocusedBorder: Color,
+    weight: FontWeight,
+) {
     var focused by remember { mutableStateOf(false) }
     val source = remember { MutableInteractionSource() }
+    val bg = if (focused) Tokens.Accent else unfocusedBg
+    val fg = if (focused) Tokens.AccentOn else unfocusedFg
+    val border = if (focused) Tokens.TextBody.copy(alpha = 0.7f) else unfocusedBorder
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Tokens.SurfaceSoft)
+            .background(bg)
             .border(
-                width = 2.dp,
-                color = if (focused) Tokens.Accent else Tokens.Divider,
+                width = if (focused) 3.dp else 2.dp,
+                color = border,
                 shape = RoundedCornerShape(12.dp),
             )
             .onFocusChanged { focused = it.isFocused }
@@ -193,7 +202,10 @@ private fun SecondaryButton(text: String, onClick: () -> Unit) {
     ) {
         Text(
             text,
-            style = body(Tokens.TextBody).copy(fontSize = 22.sp),
+            style = body(fg).copy(
+                fontSize = 22.sp,
+                fontWeight = if (focused) FontWeight.SemiBold else weight,
+            ),
         )
     }
 }

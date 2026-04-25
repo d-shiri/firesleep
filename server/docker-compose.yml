@@ -1,8 +1,8 @@
 services:
-  firesleep-helper:
+  firesleep-bridge:
     build: .
-    image: firesleep-helper:latest
-    container_name: firesleep-helper
+    image: firesleep-bridge:latest
+    container_name: firesleep-bridge
     restart: unless-stopped
     ports:
       - "8765:8765"

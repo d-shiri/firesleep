@@ -4,10 +4,10 @@ Single-module Kotlin + Jetpack Compose app, sideloaded onto a Fire TV Stick.
 Depends only on Compose, androidx.security, and OkHttp. Designed for every
 Fire TV Stick generation (minSdk 22); tested on a Fire TV Stick 4K Max.
 
-The app is deliberately **TV-brand-agnostic** — it makes one authenticated
-HTTP POST to a helper service on your LAN. All vendor-specific logic
-(pairing, WebSocket chatter, etc.) lives in `../server/`. Tested end-to-end
-with an LG webOS set; PRs welcome for other brands (see top-level README).
+The app is deliberately **TV-brand-agnostic** — it makes one HTTP POST to a
+bridge service on your LAN. All vendor-specific logic (pairing, WebSocket
+chatter, etc.) lives in `../server/`. Tested end-to-end with an LG webOS
+set; PRs welcome for other brands (see top-level README).
 
 ## Modules
 
@@ -53,14 +53,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 | Permission                       | Why                                      |
 |----------------------------------|------------------------------------------|
-| `INTERNET`                       | POST to the helper on your LAN           |
+| `INTERNET`                       | POST to the bridge on your LAN           |
 | `WAKE_LOCK`                      | Keep the device awake during countdown   |
 | `FOREGROUND_SERVICE`             | Host the timer while app is backgrounded |
 | `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` | Exact timer via AlarmManager    |
 | `POST_NOTIFICATIONS`             | Foreground-service notification          |
 
-No storage, location, Bluetooth, camera, or mic. HTTP is restricted to
-RFC1918 LAN ranges via `network_security_config.xml`.
+No storage, location, Bluetooth, camera, or mic. Cleartext HTTP is allowed
+app-wide (Android won't restrict it to a CIDR), but the app only ever talks
+to one user-entered LAN IP on `:8765`.
 
 ## Focus model
 

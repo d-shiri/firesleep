@@ -113,7 +113,7 @@ private fun LeftColumn(modifier: Modifier = Modifier) {
             .fillMaxHeight()
             .padding(start = 120.dp, top = 120.dp, end = 80.dp, bottom = 80.dp),
     ) {
-        Text("◐ FireSleep", style = eyebrow(Tokens.Accent))
+        LogoEyebrow()
         Spacer(Modifier.height(80.dp))
         Text(
             text = "Drift off.\nWe'll take\ncare of the\nTV.",

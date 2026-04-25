@@ -1,0 +1,16 @@
+[Unit]
+Description=FireSleep bridge — HTTP to LG webOS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/firesleep-bridge
+EnvironmentFile=/etc/firesleep-bridge/env
+ExecStart=/home/pi/firesleep-bridge/.venv/bin/uvicorn bridge:app --host 0.0.0.0 --port 8765
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

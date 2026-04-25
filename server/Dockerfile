@@ -18,8 +18,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
-COPY tv_helper.py .
+COPY bridge.py .
 
 USER app
 EXPOSE 8765
-CMD ["uvicorn", "tv_helper:app", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["uvicorn", "bridge:app", "--host", "0.0.0.0", "--port", "8765"]
