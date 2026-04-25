@@ -1,13 +1,13 @@
 services:
-  tv-helper:
+  firesleep-helper:
     build: .
-    image: tv-helper:latest
+    image: firesleep-helper:latest
+    container_name: firesleep-helper
     restart: unless-stopped
     ports:
       - "8765:8765"
     environment:
-      TV_IP: ${TV_IP:?set TV_IP}
-      TV_TOKEN: ${TV_TOKEN:?set TV_TOKEN}
+      TV_HOST: ${TV_HOST:?set TV_HOST (hostname or IP)}
       LG_KEY_FILE: /data/lg_key.json
     volumes:
       - lg-key:/data
@@ -15,6 +15,12 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 volumes:
   lg-key:

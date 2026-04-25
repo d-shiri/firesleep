@@ -1,14 +1,16 @@
+import asyncio
 import json
 import os
+import socket
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from aiowebostv import WebOsClient
 
-TV_IP = os.environ.get("TV_IP")
+TV_HOST = os.environ.get("TV_HOST")
 KEY_FILE = Path(os.environ.get("LG_KEY_FILE", "~/lg_key.json")).expanduser()
 
-if not TV_IP:
-    raise SystemExit("Set TV_IP env var")
+if not TV_HOST:
+    raise SystemExit("Set TV_HOST env var (TV hostname or IP)")
 
 app = FastAPI()
 
@@ -27,10 +29,18 @@ def _save_key(key: str) -> None:
     KEY_FILE.chmod(0o600)
 
 
+async def _resolve(host: str) -> str:
+    try:
+        return await asyncio.to_thread(socket.gethostbyname, host)
+    except socket.gaierror as e:
+        raise HTTPException(status_code=502, detail=f"can't resolve {host!r}: {e}")
+
+
 async def _connected_client() -> WebOsClient:
-    """Connect, pairing if needed, and persist any new key."""
+    """Resolve hostname, connect (pairing if needed), persist any new key."""
+    ip = await _resolve(TV_HOST)
     existing = _load_key()
-    client = WebOsClient(TV_IP, client_key=existing)
+    client = WebOsClient(ip, client_key=existing)
     await client.connect()  # triggers on-TV prompt if unpaired
     if client.client_key and client.client_key != existing:
         _save_key(client.client_key)
