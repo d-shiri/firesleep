@@ -2,19 +2,20 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import socket
 import time
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from aiowebostv import WebOsClient
 
 import bridge_firetv
+import bridge_lg
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
-KEY_FILE = Path(os.environ.get("LG_KEY_FILE", str(DATA_DIR / "lg_key.json"))).expanduser()
 CONFIG_FILE = DATA_DIR / "config.json"
+LEGACY_LG_KEY = DATA_DIR / "lg_key.json"
 WEB_DIR = Path(__file__).parent / "web"
 
 ENV_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -24,6 +25,10 @@ ENV_TV_BRAND = (os.environ.get("TV_BRAND") or "").strip().lower() or None
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 VALID_BRANDS = ("lg", "firetv")
 DEFAULT_BRAND = "lg"
+
+
+def _new_id() -> str:
+    return secrets.token_hex(4)
 
 
 def _load_config() -> dict:
@@ -40,19 +45,21 @@ def _save_config(cfg: dict) -> None:
     CONFIG_FILE.chmod(0o600)
 
 
-def _tv_host() -> str | None:
-    return _load_config().get("tv_host") or ENV_TV_HOST
+def _load_tvs() -> list[dict]:
+    return _load_config().get("tvs", [])
 
 
-def _tv_brand() -> str:
-    brand = (_load_config().get("tv_brand") or ENV_TV_BRAND or DEFAULT_BRAND).lower()
-    return brand if brand in VALID_BRANDS else DEFAULT_BRAND
+def _save_tvs(tvs: list[dict]) -> None:
+    cfg = _load_config()
+    cfg["tvs"] = tvs
+    _save_config(cfg)
 
 
-def _paired() -> bool:
-    if _tv_brand() == "firetv":
-        return bridge_firetv.paired(DATA_DIR)
-    return KEY_FILE.exists()
+def _get_tv(tv_id: str) -> dict:
+    for tv in _load_tvs():
+        if tv["id"] == tv_id:
+            return tv
+    raise HTTPException(status_code=404, detail=f"TV {tv_id!r} not found")
 
 
 def _log_level() -> str:
@@ -73,10 +80,49 @@ log.addHandler(_handler)
 log.propagate = False
 log.setLevel(_log_level())
 
+
+def _migrate_config() -> None:
+    """Bring old single-TV config into the multi-TV shape. Idempotent."""
+    cfg = _load_config()
+    changed = False
+    if "tvs" not in cfg:
+        legacy_host = cfg.get("tv_host") or ENV_TV_HOST
+        legacy_brand = (cfg.get("tv_brand") or ENV_TV_BRAND or DEFAULT_BRAND).lower()
+        if legacy_brand not in VALID_BRANDS:
+            legacy_brand = DEFAULT_BRAND
+        tvs: list[dict] = []
+        if legacy_host:
+            tv_id = _new_id()
+            tvs.append({
+                "id": tv_id,
+                "name": f"{legacy_brand.upper()} TV",
+                "brand": legacy_brand,
+                "host": legacy_host,
+                "paired": False,
+            })
+            if legacy_brand == "lg" and LEGACY_LG_KEY.exists():
+                new_path = DATA_DIR / f"lg_key_{tv_id}.json"
+                if not new_path.exists():
+                    LEGACY_LG_KEY.rename(new_path)
+                    log.info("migrated LG pairing key %s -> %s", LEGACY_LG_KEY, new_path)
+                tvs[0]["paired"] = True
+            log.info("migrated single-TV config to multi-TV (id=%s, brand=%s)", tv_id, legacy_brand)
+        cfg["tvs"] = tvs
+        changed = True
+    for k in ("tv_host", "tv_brand"):
+        if k in cfg:
+            del cfg[k]
+            changed = True
+    if changed:
+        _save_config(cfg)
+
+
+_migrate_config()
+
 app = FastAPI()
 
-log.info("startup: brand=%s tv_host=%s paired=%s web_dir=%s",
-         _tv_brand(), _tv_host(), _paired(), WEB_DIR if WEB_DIR.exists() else "missing")
+log.info("startup: tvs=%d data_dir=%s web_dir=%s",
+         len(_load_tvs()), DATA_DIR, WEB_DIR if WEB_DIR.exists() else "missing")
 
 
 @app.middleware("http")
@@ -90,29 +136,12 @@ async def access_log(request: Request, call_next):
         log.exception("%s %s %s 500 %.0fms", client, request.method, request.url.path, elapsed)
         raise
     elapsed = (time.perf_counter() - start) * 1000
-    # Health and static asset hits are noisy — keep at DEBUG.
     p = request.url.path
     quiet = p == "/health" or p == "/" or p.endswith((".css", ".js", ".ico", ".png", ".svg"))
     level = logging.DEBUG if quiet else logging.INFO
     log.log(level, "%s %s %s %d %.0fms",
             client, request.method, p, response.status_code, elapsed)
     return response
-
-
-def _load_key() -> str | None:
-    if KEY_FILE.exists():
-        try:
-            return json.loads(KEY_FILE.read_text()).get("key")
-        except (json.JSONDecodeError, OSError) as e:
-            log.warning("couldn't read key file %s: %s", KEY_FILE, e)
-            return None
-    return None
-
-
-def _save_key(key: str) -> None:
-    KEY_FILE.write_text(json.dumps({"key": key}))
-    KEY_FILE.chmod(0o600)
-    log.info("saved new pairing key to %s", KEY_FILE)
 
 
 async def _resolve(host: str) -> str:
@@ -125,60 +154,68 @@ async def _resolve(host: str) -> str:
     return ip
 
 
-async def _connected_client() -> WebOsClient:
-    """Resolve hostname, connect (pairing if needed), persist any new key."""
-    host = _tv_host()
-    if not host:
-        raise HTTPException(status_code=503, detail="TV host not configured. Open the web UI to set it.")
-    ip = await _resolve(host)
-    existing = _load_key()
-    log.info("connecting to TV at %s (paired=%s)", ip, existing is not None)
-    client = WebOsClient(ip, client_key=existing)
+def _set_paired(tv_id: str, paired: bool) -> None:
+    tvs = _load_tvs()
+    for tv in tvs:
+        if tv["id"] == tv_id:
+            tv["paired"] = paired
+            break
+    _save_tvs(tvs)
+
+
+async def _do_pair(tv: dict) -> None:
+    ip = await _resolve(tv["host"])
     try:
-        await client.connect()  # triggers on-TV prompt if unpaired
+        if tv["brand"] == "firetv":
+            await bridge_firetv.pair(ip, DATA_DIR)
+        else:
+            await bridge_lg.pair(ip, DATA_DIR, tv["id"])
     except Exception as e:
-        log.error("connect failed: %s: %s", type(e).__name__, e)
-        raise HTTPException(status_code=502, detail=f"connect failed: {e}")
-    if client.client_key and client.client_key != existing:
-        _save_key(client.client_key)
-    return client
+        log.error("pair failed for %s: %s: %s", tv["id"], type(e).__name__, e)
+        raise HTTPException(status_code=502, detail=f"pair failed: {e}")
+    _set_paired(tv["id"], True)
+
+
+async def _do_unpair(tv: dict) -> None:
+    if tv["brand"] == "firetv":
+        # ADB key is shared across Fire TVs; only delete it when no Fire TV
+        # remains paired, so unpairing one doesn't bork the others.
+        any_other_firetv_paired = any(
+            t["id"] != tv["id"] and t["brand"] == "firetv" and t.get("paired")
+            for t in _load_tvs()
+        )
+        if not any_other_firetv_paired:
+            bridge_firetv.unpair(DATA_DIR)
+    else:
+        bridge_lg.unpair(DATA_DIR, tv["id"])
+    _set_paired(tv["id"], False)
+
+
+async def _do_poweroff(tv: dict) -> None:
+    ip = await _resolve(tv["host"])
+    if tv["brand"] == "firetv":
+        await bridge_firetv.power_off(ip, DATA_DIR)
+    else:
+        await bridge_lg.power_off(ip, DATA_DIR, tv["id"])
 
 
 @app.get("/health")
 async def health():
-    return {
-        "ok": True,
-        "paired": _paired(),
-        "configured": _tv_host() is not None,
-    }
+    return {"ok": True}
 
 
 @app.get("/config")
 async def get_config():
-    return {
-        "tv_host": _tv_host() or "",
-        "tv_brand": _tv_brand(),
-        "log_level": _log_level(),
-        "paired": _paired(),
-    }
+    return {"log_level": _log_level()}
 
 
 class ConfigUpdate(BaseModel):
-    tv_host: str | None = None
-    tv_brand: str | None = None
     log_level: str | None = None
 
 
 @app.post("/config")
 async def post_config(body: ConfigUpdate):
     cfg = _load_config()
-    if body.tv_host is not None:
-        cfg["tv_host"] = body.tv_host.strip()
-    if body.tv_brand is not None:
-        brand = body.tv_brand.strip().lower()
-        if brand not in VALID_BRANDS:
-            raise HTTPException(status_code=400, detail=f"invalid tv_brand: {body.tv_brand}")
-        cfg["tv_brand"] = brand
     if body.log_level is not None:
         lvl = body.log_level.upper()
         if lvl not in VALID_LOG_LEVELS:
@@ -186,71 +223,168 @@ async def post_config(body: ConfigUpdate):
         cfg["log_level"] = lvl
         log.setLevel(lvl)
     _save_config(cfg)
-    log.info("config updated: %s", cfg)
-    return {"ok": True, "config": cfg}
+    log.info("config updated: log_level=%s", cfg.get("log_level"))
+    return {"ok": True, "config": {"log_level": _log_level()}}
 
 
-async def _resolved_host() -> str:
-    host = _tv_host()
-    if not host:
-        raise HTTPException(status_code=503, detail="TV host not configured. Open the web UI to set it.")
-    return await _resolve(host)
+@app.get("/tvs")
+async def list_tvs():
+    return _load_tvs()
 
 
-@app.post("/pair")
-async def pair():
-    """Trigger first-time pairing.
+class TVCreate(BaseModel):
+    name: str
+    brand: str
+    host: str
 
-    LG: user accepts the on-screen prompt with the LG remote.
-    Fire TV: user accepts "Allow USB debugging" on the Fire TV.
-    """
-    brand = _tv_brand()
-    log.info("pair: starting brand=%s", brand)
-    if brand == "firetv":
-        ip = await _resolved_host()
-        try:
-            await bridge_firetv.pair(ip, DATA_DIR)
-        except Exception as e:
-            log.error("pair failed: %s: %s", type(e).__name__, e)
-            raise HTTPException(status_code=502, detail=f"pair failed: {e}")
-        log.info("pair: complete")
-        return {"ok": True, "paired": True}
-    client = await _connected_client()
-    await client.disconnect()
-    log.info("pair: complete")
+
+class TVUpdate(BaseModel):
+    name: str | None = None
+    brand: str | None = None
+    host: str | None = None
+
+
+def _validate_brand(brand: str) -> str:
+    b = brand.strip().lower()
+    if b not in VALID_BRANDS:
+        raise HTTPException(status_code=400, detail=f"invalid brand: {brand!r}")
+    return b
+
+
+def _validate_name(name: str) -> str:
+    n = name.strip()
+    if not n:
+        raise HTTPException(status_code=400, detail="name must not be empty")
+    return n
+
+
+def _validate_host(host: str) -> str:
+    h = host.strip()
+    if not h:
+        raise HTTPException(status_code=400, detail="host must not be empty")
+    return h
+
+
+@app.post("/tvs", status_code=201)
+async def create_tv(body: TVCreate):
+    tv = {
+        "id": _new_id(),
+        "name": _validate_name(body.name),
+        "brand": _validate_brand(body.brand),
+        "host": _validate_host(body.host),
+        "paired": False,
+    }
+    tvs = _load_tvs()
+    tvs.append(tv)
+    _save_tvs(tvs)
+    log.info("added TV id=%s name=%r brand=%s host=%s", tv["id"], tv["name"], tv["brand"], tv["host"])
+    return tv
+
+
+@app.get("/tvs/{tv_id}")
+async def get_tv(tv_id: str):
+    return _get_tv(tv_id)
+
+
+@app.put("/tvs/{tv_id}")
+async def update_tv(tv_id: str, body: TVUpdate):
+    tvs = _load_tvs()
+    for tv in tvs:
+        if tv["id"] != tv_id:
+            continue
+        brand_changed = False
+        if body.name is not None:
+            tv["name"] = _validate_name(body.name)
+        if body.host is not None:
+            tv["host"] = _validate_host(body.host)
+        if body.brand is not None:
+            new_brand = _validate_brand(body.brand)
+            if new_brand != tv["brand"]:
+                tv["brand"] = new_brand
+                brand_changed = True
+        if brand_changed:
+            # Old key no longer applies — drop the paired flag so the user
+            # re-pairs through the new backend.
+            if tv.get("paired"):
+                # Clean the old backend's key for this TV before flipping.
+                if tv["brand"] == "firetv":
+                    bridge_lg.unpair(DATA_DIR, tv_id)
+                # (firetv key is shared; leave it in place)
+                tv["paired"] = False
+        _save_tvs(tvs)
+        log.info("updated TV id=%s -> %s", tv_id, tv)
+        return tv
+    raise HTTPException(status_code=404, detail=f"TV {tv_id!r} not found")
+
+
+@app.delete("/tvs/{tv_id}", status_code=204)
+async def delete_tv(tv_id: str):
+    tvs = _load_tvs()
+    for i, tv in enumerate(tvs):
+        if tv["id"] == tv_id:
+            await _do_unpair(tv)
+            tvs.pop(i)
+            _save_tvs(tvs)
+            log.info("deleted TV id=%s name=%r", tv_id, tv["name"])
+            return Response(status_code=204)
+    raise HTTPException(status_code=404, detail=f"TV {tv_id!r} not found")
+
+
+@app.post("/tvs/{tv_id}/pair")
+async def pair_tv(tv_id: str):
+    tv = _get_tv(tv_id)
+    log.info("pair: starting tv=%s brand=%s", tv_id, tv["brand"])
+    await _do_pair(tv)
+    log.info("pair: complete tv=%s", tv_id)
     return {"ok": True, "paired": True}
 
 
-@app.post("/unpair")
-async def unpair():
-    if _tv_brand() == "firetv":
-        bridge_firetv.unpair(DATA_DIR)
-        return {"ok": True, "paired": False}
-    if KEY_FILE.exists():
-        KEY_FILE.unlink()
-        log.info("unpaired: removed %s", KEY_FILE)
+@app.post("/tvs/{tv_id}/unpair")
+async def unpair_tv(tv_id: str):
+    tv = _get_tv(tv_id)
+    await _do_unpair(tv)
     return {"ok": True, "paired": False}
 
 
-@app.post("/poweroff")
-async def poweroff():
-    brand = _tv_brand()
-    log.info("poweroff: starting brand=%s", brand)
-    if brand == "firetv":
-        ip = await _resolved_host()
-        try:
-            await bridge_firetv.power_off(ip, DATA_DIR)
-        except Exception as e:
-            log.error("poweroff failed: %s: %s", type(e).__name__, e)
-            raise HTTPException(status_code=502, detail=f"poweroff failed: {e}")
-        return {"ok": True}
-    client = await _connected_client()
+@app.post("/tvs/{tv_id}/poweroff")
+async def poweroff_tv(tv_id: str):
+    tv = _get_tv(tv_id)
+    log.info("poweroff: starting tv=%s brand=%s", tv_id, tv["brand"])
     try:
-        await client.power_off()
-        log.info("poweroff: TV acknowledged")
-    finally:
-        await client.disconnect()
+        await _do_poweroff(tv)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error("poweroff failed for %s: %s: %s", tv_id, type(e).__name__, e)
+        detail = str(e) or type(e).__name__
+        raise HTTPException(status_code=502, detail=f"poweroff failed: {detail}")
     return {"ok": True}
+
+
+@app.post("/poweroff")
+async def poweroff_all():
+    """Best-effort fan-out across every configured TV.
+
+    Always returns 200 so a sleep-timer client (the Fire TV APK) doesn't
+    page on a single-TV failure. Per-TV results live in the response body
+    and the bridge log.
+    """
+    tvs = _load_tvs()
+    if not tvs:
+        raise HTTPException(status_code=503, detail="no TVs configured")
+    log.info("poweroff: fan-out to %d TV(s)", len(tvs))
+    coros = [_do_poweroff(tv) for tv in tvs]
+    raw = await asyncio.gather(*coros, return_exceptions=True)
+    results = []
+    for tv, r in zip(tvs, raw):
+        if isinstance(r, Exception):
+            log.error("poweroff failed for %s (%s): %s: %s",
+                      tv["id"], tv["name"], type(r).__name__, r)
+            err = str(r) or type(r).__name__
+            results.append({"id": tv["id"], "name": tv["name"], "ok": False, "error": err})
+        else:
+            results.append({"id": tv["id"], "name": tv["name"], "ok": True})
+    return {"ok": all(r["ok"] for r in results), "results": results}
 
 
 # Static UI mounted LAST so the API routes above take precedence. html=True

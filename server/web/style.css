@@ -217,3 +217,44 @@ footer {
   font-size: 12px;
   letter-spacing: 1px;
 }
+
+.section-title {
+  font-weight: 400;
+  font-size: 22px;
+  letter-spacing: 0.5px;
+  margin: 32px 0 4px;
+}
+
+.section-sub {
+  margin: 0 0 16px;
+}
+
+.tv-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.tv-header .tv-name {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.tv-header .tv-delete {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+#tv-list:empty::before {
+  content: "No TVs yet — add one below.";
+  display: block;
+  padding: 18px 0;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.add-tv {
+  border-style: dashed;
+}

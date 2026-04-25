@@ -13,27 +13,12 @@
         <span class="flame" aria-hidden="true"></span>
         <span class="wordmark">FireSleep</span>
       </div>
-      <p class="sub">Bridge admin · <span id="brand-tag">LG webOS</span></p>
+      <p class="sub">Bridge admin</p>
     </header>
 
     <section class="card">
-      <h2>Connection</h2>
-      <p class="muted" id="host-help">Hostname or LAN IP of the LG TV. Saved to <code>/data/config.json</code>.</p>
-      <div class="row">
-        <label>
-          <span class="label">Backend</span>
-          <select id="tv-brand">
-            <option value="lg">LG webOS (direct)</option>
-            <option value="firetv">Fire TV → CEC (Samsung / Sony / Vizio / Hisense / …)</option>
-          </select>
-        </label>
-      </div>
-      <div class="row">
-        <label>
-          <span class="label">TV host</span>
-          <input id="tv-host" type="text" placeholder="e.g. LGwebOSTV or 192.168.2.226" />
-        </label>
-      </div>
+      <h2>Settings</h2>
+      <p class="muted">Bridge-wide options. Saved to <code>/data/config.json</code>.</p>
       <div class="row">
         <label>
           <span class="label">Log level</span>
@@ -46,29 +31,46 @@
         </label>
       </div>
       <div class="actions">
-        <button id="save" class="primary">Save</button>
-        <span id="save-status" class="status"></span>
+        <button id="save-config" class="primary">Save</button>
+        <span id="config-status" class="status"></span>
       </div>
     </section>
 
-    <section class="card">
-      <h2>Pairing
-        <span id="paired-badge" class="badge">…</span>
-      </h2>
-      <p class="muted" id="pair-help">First-time pairing prompts you on the TV — accept with the LG remote.</p>
-      <div class="actions">
-        <button id="pair" class="primary">Pair with TV</button>
-        <button id="unpair" class="ghost danger">Forget pairing</button>
-        <span id="pair-status" class="status"></span>
-      </div>
-    </section>
+    <h2 class="section-title">TVs</h2>
+    <p class="muted section-sub">
+      Each TV is paired and powered off independently. <code>POST /poweroff</code>
+      fans out to all of them — the Fire TV APK doesn't need to know about
+      individual TVs.
+    </p>
+    <div id="tv-list"></div>
 
-    <section class="card">
-      <h2>Test</h2>
-      <p class="muted">Powers off the TV right now. Useful for verifying setup.</p>
+    <section class="card add-tv">
+      <h2>Add a TV</h2>
+      <div class="row">
+        <label>
+          <span class="label">Name</span>
+          <input id="new-name" type="text" placeholder="e.g. Living room" />
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <span class="label">Backend</span>
+          <select id="new-brand">
+            <option value="lg">LG webOS (direct)</option>
+            <option value="firetv">Fire TV → CEC (Samsung / Sony / Vizio / Hisense / …)</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <span class="label">Host</span>
+          <input id="new-host" type="text" placeholder="hostname or IP" />
+        </label>
+      </div>
+      <p class="muted" id="new-help"></p>
       <div class="actions">
-        <button id="poweroff" class="ghost">Power off TV</button>
-        <span id="poweroff-status" class="status"></span>
+        <button id="add-tv" class="primary">Add TV</button>
+        <span id="add-status" class="status"></span>
       </div>
     </section>
 
