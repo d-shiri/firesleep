@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from aiowebostv import WebOsClient
 
+import bridge_firetv
+
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 KEY_FILE = Path(os.environ.get("LG_KEY_FILE", str(DATA_DIR / "lg_key.json"))).expanduser()
 CONFIG_FILE = DATA_DIR / "config.json"
@@ -17,8 +19,11 @@ WEB_DIR = Path(__file__).parent / "web"
 
 ENV_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 ENV_TV_HOST = (os.environ.get("TV_HOST") or "").strip() or None
+ENV_TV_BRAND = (os.environ.get("TV_BRAND") or "").strip().lower() or None
 
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+VALID_BRANDS = ("lg", "firetv")
+DEFAULT_BRAND = "lg"
 
 
 def _load_config() -> dict:
@@ -37,6 +42,17 @@ def _save_config(cfg: dict) -> None:
 
 def _tv_host() -> str | None:
     return _load_config().get("tv_host") or ENV_TV_HOST
+
+
+def _tv_brand() -> str:
+    brand = (_load_config().get("tv_brand") or ENV_TV_BRAND or DEFAULT_BRAND).lower()
+    return brand if brand in VALID_BRANDS else DEFAULT_BRAND
+
+
+def _paired() -> bool:
+    if _tv_brand() == "firetv":
+        return bridge_firetv.paired(DATA_DIR)
+    return KEY_FILE.exists()
 
 
 def _log_level() -> str:
@@ -59,8 +75,8 @@ log.setLevel(_log_level())
 
 app = FastAPI()
 
-log.info("startup: tv_host=%s, key_file=%s, paired=%s, web_dir=%s",
-         _tv_host(), KEY_FILE, KEY_FILE.exists(), WEB_DIR if WEB_DIR.exists() else "missing")
+log.info("startup: brand=%s tv_host=%s paired=%s web_dir=%s",
+         _tv_brand(), _tv_host(), _paired(), WEB_DIR if WEB_DIR.exists() else "missing")
 
 
 @app.middleware("http")
@@ -132,7 +148,7 @@ async def _connected_client() -> WebOsClient:
 async def health():
     return {
         "ok": True,
-        "paired": KEY_FILE.exists(),
+        "paired": _paired(),
         "configured": _tv_host() is not None,
     }
 
@@ -141,13 +157,15 @@ async def health():
 async def get_config():
     return {
         "tv_host": _tv_host() or "",
+        "tv_brand": _tv_brand(),
         "log_level": _log_level(),
-        "paired": KEY_FILE.exists(),
+        "paired": _paired(),
     }
 
 
 class ConfigUpdate(BaseModel):
     tv_host: str | None = None
+    tv_brand: str | None = None
     log_level: str | None = None
 
 
@@ -156,6 +174,11 @@ async def post_config(body: ConfigUpdate):
     cfg = _load_config()
     if body.tv_host is not None:
         cfg["tv_host"] = body.tv_host.strip()
+    if body.tv_brand is not None:
+        brand = body.tv_brand.strip().lower()
+        if brand not in VALID_BRANDS:
+            raise HTTPException(status_code=400, detail=f"invalid tv_brand: {body.tv_brand}")
+        cfg["tv_brand"] = brand
     if body.log_level is not None:
         lvl = body.log_level.upper()
         if lvl not in VALID_LOG_LEVELS:
@@ -167,10 +190,31 @@ async def post_config(body: ConfigUpdate):
     return {"ok": True, "config": cfg}
 
 
+async def _resolved_host() -> str:
+    host = _tv_host()
+    if not host:
+        raise HTTPException(status_code=503, detail="TV host not configured. Open the web UI to set it.")
+    return await _resolve(host)
+
+
 @app.post("/pair")
 async def pair():
-    """Trigger pairing. User must accept prompt on the LG with its remote."""
-    log.info("pair: starting")
+    """Trigger first-time pairing.
+
+    LG: user accepts the on-screen prompt with the LG remote.
+    Fire TV: user accepts "Allow USB debugging" on the Fire TV.
+    """
+    brand = _tv_brand()
+    log.info("pair: starting brand=%s", brand)
+    if brand == "firetv":
+        ip = await _resolved_host()
+        try:
+            await bridge_firetv.pair(ip, DATA_DIR)
+        except Exception as e:
+            log.error("pair failed: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=502, detail=f"pair failed: {e}")
+        log.info("pair: complete")
+        return {"ok": True, "paired": True}
     client = await _connected_client()
     await client.disconnect()
     log.info("pair: complete")
@@ -179,6 +223,9 @@ async def pair():
 
 @app.post("/unpair")
 async def unpair():
+    if _tv_brand() == "firetv":
+        bridge_firetv.unpair(DATA_DIR)
+        return {"ok": True, "paired": False}
     if KEY_FILE.exists():
         KEY_FILE.unlink()
         log.info("unpaired: removed %s", KEY_FILE)
@@ -187,7 +234,16 @@ async def unpair():
 
 @app.post("/poweroff")
 async def poweroff():
-    log.info("poweroff: starting")
+    brand = _tv_brand()
+    log.info("poweroff: starting brand=%s", brand)
+    if brand == "firetv":
+        ip = await _resolved_host()
+        try:
+            await bridge_firetv.power_off(ip, DATA_DIR)
+        except Exception as e:
+            log.error("poweroff failed: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=502, detail=f"poweroff failed: {e}")
+        return {"ok": True}
     client = await _connected_client()
     try:
         await client.power_off()

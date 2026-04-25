@@ -13,12 +13,21 @@
         <span class="flame" aria-hidden="true"></span>
         <span class="wordmark">FireSleep</span>
       </div>
-      <p class="sub">Bridge admin · LG webOS</p>
+      <p class="sub">Bridge admin · <span id="brand-tag">LG webOS</span></p>
     </header>
 
     <section class="card">
       <h2>Connection</h2>
-      <p class="muted">Hostname or LAN IP of the LG TV. Saved to <code>/data/config.json</code>.</p>
+      <p class="muted" id="host-help">Hostname or LAN IP of the LG TV. Saved to <code>/data/config.json</code>.</p>
+      <div class="row">
+        <label>
+          <span class="label">Backend</span>
+          <select id="tv-brand">
+            <option value="lg">LG webOS (direct)</option>
+            <option value="firetv">Fire TV → CEC (Samsung / Sony / Vizio / Hisense / …)</option>
+          </select>
+        </label>
+      </div>
       <div class="row">
         <label>
           <span class="label">TV host</span>
@@ -46,7 +55,7 @@
       <h2>Pairing
         <span id="paired-badge" class="badge">…</span>
       </h2>
-      <p class="muted">First-time pairing prompts you on the TV — accept with the LG remote.</p>
+      <p class="muted" id="pair-help">First-time pairing prompts you on the TV — accept with the LG remote.</p>
       <div class="actions">
         <button id="pair" class="primary">Pair with TV</button>
         <button id="unpair" class="ghost danger">Forget pairing</button>

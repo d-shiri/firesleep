@@ -15,14 +15,19 @@ the entire trust boundary.
 
 ## TV support
 
-| Brand / OS          | Status             | Backend              |
-|---------------------|--------------------|----------------------|
-| LG webOS 23 (UR78)  | Tested, works      | `aiowebostv` over WS |
-| Samsung Tizen       | Not implemented    | PR welcome           |
-| Sony Bravia         | Not implemented    | PR welcome           |
-| Vizio SmartCast     | Not implemented    | PR welcome           |
-| Hisense VIDAA       | Not implemented    | PR welcome           |
-| Roku TVs            | Not implemented    | PR welcome           |
+| Brand / OS          | Status             | Backend                              |
+|---------------------|--------------------|--------------------------------------|
+| LG webOS 23 (UR78)  | Tested, works      | `aiowebostv` over WS (`TV_BRAND=lg`) |
+| Samsung Tizen       | Via Fire TV + CEC  | `adb-shell` (`TV_BRAND=firetv`)      |
+| Sony Bravia         | Via Fire TV + CEC  | `adb-shell` (`TV_BRAND=firetv`)      |
+| Vizio SmartCast     | Via Fire TV + CEC  | `adb-shell` (`TV_BRAND=firetv`)      |
+| Hisense VIDAA       | Via Fire TV + CEC  | `adb-shell` (`TV_BRAND=firetv`)      |
+| Roku TVs            | Via Fire TV + CEC  | `adb-shell` (`TV_BRAND=firetv`)      |
+
+The Fire TV path uses ADB-on-TCP to send `KEYCODE_SLEEP` (223). The Fire
+TV goes to standby, and CEC propagates power-off to the TV. One backend
+covers any modern CEC-compliant TV — at the cost of ADB debugging staying
+on permanently on the Fire TV. See "One-time pairing (Fire TV)" below.
 
 If you add a new backend, please:
 
@@ -73,6 +78,22 @@ You can either:
   POST http://<PI_IP>:8765/pair` and accept the prompt on the TV.
 - **Run the standalone script:** `cd server && TV_HOST=LGwebOSTV uv run
   test_pairing.py`.
+
+## One-time pairing (Fire TV)
+
+For the `TV_BRAND=firetv` backend, `TV_HOST` is the **Fire TV's** IP, not
+the TV's. Setup:
+
+1. On the Fire TV: *Settings → My Fire TV → Developer options → ADB
+   debugging: ON*. (If "Developer options" isn't visible, open *About →
+   Fire TV Stick* and click the device name seven times.)
+2. From the bridge: `curl -X POST http://<PI_IP>:8765/pair`. The Fire TV
+   shows "Allow USB debugging from this computer?" — accept and tick
+   **"Always allow from this computer"** so the key sticks across reboots.
+3. The bridge persists its RSA key as `/data/adb_key{,.pub}`.
+
+If the Fire TV ever forgets the key (firmware updates have done this in
+the past), `curl -X POST http://<PI_IP>:8765/pair` again and re-accept.
 
 ## Running the service
 
@@ -131,11 +152,15 @@ curl -X POST http://<PI_IP>:8765/poweroff
 
 ## Configuration
 
-| Env var       | Required | Purpose                                            |
-|---------------|----------|----------------------------------------------------|
-| `TV_HOST`     | yes      | TV hostname or IP — resolved at every connect      |
-| `LG_KEY_FILE` | no       | Path to the cached pairing key file                |
-| `LOG_LEVEL`   | no       | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`      |
+| Env var       | Required | Purpose                                                                       |
+|---------------|----------|-------------------------------------------------------------------------------|
+| `TV_HOST`     | yes      | TV (LG) or Fire TV hostname/IP — resolved at every connect                    |
+| `TV_BRAND`    | no       | `lg` (default) or `firetv`. Picks which backend handles `/poweroff`.          |
+| `LG_KEY_FILE` | no       | Path to the cached LG pairing key file                                        |
+| `LOG_LEVEL`   | no       | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`                                 |
+
+`TV_BRAND` and `TV_HOST` can also be set from the web UI; the saved value
+in `/data/config.json` takes precedence over env on subsequent restarts.
 
 ## Logs
 

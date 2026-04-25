@@ -29,16 +29,43 @@ function setBadge(el, paired) {
   el.classList.add(paired ? "ok" : "warn");
 }
 
+const BRAND_COPY = {
+  lg: {
+    tag: "LG webOS",
+    hostHelp: "Hostname or LAN IP of the LG TV. Saved to /data/config.json.",
+    pairHelp: "First-time pairing prompts you on the TV — accept with the LG remote.",
+    hostPlaceholder: "e.g. LGwebOSTV or 192.168.2.226",
+  },
+  firetv: {
+    tag: "Fire TV (ADB → CEC)",
+    hostHelp: "Hostname or LAN IP of the Fire TV. The Fire TV goes to standby and pulls the TV down over HDMI-CEC.",
+    pairHelp: "Enable ADB debugging on the Fire TV first (Settings → My Fire TV → Developer options). Pairing pops 'Allow USB debugging' on the Fire TV — accept and tick 'Always allow'.",
+    hostPlaceholder: "e.g. 192.168.2.50 (Fire TV)",
+  },
+};
+
+function applyBrand(brand) {
+  const copy = BRAND_COPY[brand] || BRAND_COPY.lg;
+  $("brand-tag").textContent = copy.tag;
+  $("host-help").textContent = copy.hostHelp;
+  $("pair-help").textContent = copy.pairHelp;
+  $("tv-host").placeholder = copy.hostPlaceholder;
+}
+
 async function refresh() {
   try {
     const cfg = await api("GET", "/config");
     $("tv-host").value = cfg.tv_host || "";
+    $("tv-brand").value = cfg.tv_brand || "lg";
     $("log-level").value = cfg.log_level || "INFO";
+    applyBrand($("tv-brand").value);
     setBadge($("paired-badge"), cfg.paired);
   } catch (e) {
     setStatus($("save-status"), `Couldn't load config: ${e.message}`, "err");
   }
 }
+
+$("tv-brand").addEventListener("change", () => applyBrand($("tv-brand").value));
 
 $("save").addEventListener("click", async () => {
   const btn = $("save");
@@ -47,6 +74,7 @@ $("save").addEventListener("click", async () => {
   try {
     await api("POST", "/config", {
       tv_host: $("tv-host").value.trim(),
+      tv_brand: $("tv-brand").value,
       log_level: $("log-level").value,
     });
     setStatus($("save-status"), "Saved ✓", "ok");
@@ -73,7 +101,7 @@ $("pair").addEventListener("click", async () => {
 });
 
 $("unpair").addEventListener("click", async () => {
-  if (!confirm("Forget the LG pairing key? You'll need to re-pair.")) return;
+  if (!confirm("Forget the pairing key? You'll need to re-pair.")) return;
   const btn = $("unpair");
   btn.disabled = true;
   setStatus($("pair-status"), "Forgetting…");
