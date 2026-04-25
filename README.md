@@ -1,140 +1,84 @@
-# FireSleep — a sleep timer for your TV, driven by the Fire TV remote
+# FireSleep — a real sleep timer for your TV, driven by the Fire TV remote
 
-**Self-hosted. One remote. Actually turns the TV off.**
+Most TVs hide their sleep timer in a settings menu you can only reach with the
+TV's own remote. If you watch through a Fire TV Stick, that means juggling two
+remotes in the dark — and if you forget, the TV stays on all night.
 
-Most TVs have a sleep timer buried in a settings menu you can only reach with
-the TV's own remote. If you watch everything through a Fire TV Stick, that
-means juggling two remotes in the dark just to tell your TV to go to bed on
-schedule — and if you forget, the TV stays on all night.
-
-FireSleep is a sideloaded Fire TV app that adds a proper sleep timer *and*
-actually powers the TV off, all driven with the Fire TV remote you already
-have in your hand. No second remote, no cloud service, no account: your TV,
-your Pi, your LAN.
+FireSleep is a sideloaded Fire TV app that adds a proper sleep timer **and**
+actually powers the TV off, all from the Fire TV remote you already have. No
+second remote, no cloud, no account: your TV, your Pi, your LAN.
 
 ## How it works
 
 ```
-Fire TV remote
-    ↓ D-pad
-FireSleep app on the Fire TV Stick (this repo → android/)
-    ↓ HTTP POST http://<pi>:8765/poweroff
-FireSleep bridge on a Raspberry Pi (this repo → server/)
-    ↓ talks to the TV over the LAN
-Your TV → powers off
+Fire TV remote → FireSleep app (android/) → HTTP POST → bridge on Pi (server/) → TV powers off
 ```
 
-The bridge trusts your LAN — there's no token to copy or paste. Bind it to a
-private interface, and the only thing that can reach it is whatever's on the
-same network as your Fire TV.
+The Fire TV app owns the timer (`AlarmManager` behind a foreground service, so
+it survives backgrounding and doze). The Pi owns the TV-vendor bits (pairing,
+WebSocket chatter). Adding a new TV brand is a change to `server/`, not the
+app.
 
-The Fire TV app owns the timer (an `AlarmManager` alarm behind a foreground
-service, so it survives backgrounding and doze). The Pi owns the
-TV-vendor-specific bits (pairing state, WebSocket chatter, etc.). Keeping
-vendor logic on the Pi means:
+## Tested
 
-- The APK stays tiny — no Python, no WebSocket libs, no per-vendor SDKs.
-- Adding a new TV brand is a change to the Pi bridge, not the app.
+- **LG webOS** (UR78 / webOS 23) — works end-to-end.
+- **Samsung** — works end-to-end.
+- **Fire TV Stick 4K Max** — primary dev target; should work on any Fire TV
+  (minSdk 22).
 
-## TV compatibility
+PRs welcome for Sony, Vizio, Hisense, Roku TVs — drop a sibling bridge file
+next to `server/bridge.py` and document pairing in `server/README.md`.
 
-The project is split so the Fire TV side is **TV-agnostic** — it makes one
-HTTP POST. Vendor-specific logic lives in `server/`.
+## Quick start
 
-- **LG webOS (tested):** UR78 / webOS 23. Uses `aiowebostv` over the LG's
-  WebSocket API. Works end-to-end; this is the path I actually run.
-- **Everything else:** should be straightforward. The Pi bridge is a single
-  short FastAPI file — swap the `power_off()` implementation for your TV's
-  control protocol and the app keeps working unchanged.
+```bash
+# 1. Run the bridge on a Pi (or any Linux box on your LAN)
+cd server && docker compose up -d --build
+#    open http://<pi>:8765/ to set the TV host and pair
 
-**Fire TV devices:** should work on any Fire TV Stick (minSdk 22 covers every
-generation). I've only tested on a Fire TV Stick 4K Max — reports from other
-sticks are welcome.
+# 2. Build the Fire TV app
+cd android && ./gradlew assembleDebug
 
-### PRs welcome
+# 3. Sideload onto the Fire TV
+adb connect <FIRE_TV_IP>:5555
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
-If you get this running with a Samsung, Sony, Vizio, Hisense, Roku TV, etc.,
-please open a PR. Ideal shape:
+On first launch the app asks for the Pi's LAN IP. That's it.
 
-- Drop a new bridge file next to `server/bridge.py` (e.g. `bridge_samsung.py`).
-- Add a short section to `server/README.md` covering pairing + running.
-- If your TV needs a different port or extra headers, make it env-configurable
-  rather than hardcoded.
+## Triple-press shortcut (optional)
 
-Same goes for Fire TV hardware reports — if something breaks on an older
-stick, file an issue with the device model and `adb logcat` output.
+FireSleep ships with an Accessibility Service that lets you bring up the timer
+from any app — Netflix, YouTube, etc. — by triple-pressing the **≡ Menu**
+button on the Fire TV remote.
+
+Fire TV's Settings UI sometimes hides third-party accessibility services. If
+the toggle doesn't appear under Settings → Accessibility, enable it once over
+ADB:
+
+```bash
+adb shell settings put secure enabled_accessibility_services com.firesleep.app/com.firesleep.app.access.FireSleepAccessibilityService
+adb shell settings put secure accessibility_enabled 1
+```
 
 ## Repo layout
 
 ```
-.
-├── android/         # Sideloaded Fire TV app (Kotlin, Jetpack Compose for TV)
-├── server/          # Raspberry Pi bridge (FastAPI + vendor-specific code)
-├── design/          # Design spec and HTML/JSX mocks for the 4 screens
-└── plan.md          # Original project brief / decisions log
+android/   # Sideloaded Fire TV app (Kotlin, Jetpack Compose for TV)
+server/    # Raspberry Pi bridge (FastAPI + per-vendor code) + web admin UI
+design/    # Pixel-level design spec
 ```
 
-Each side has its own README:
+See **[`android/README.md`](android/README.md)** for build details and
+**[`server/README.md`](server/README.md)** for pairing, Docker, and systemd
+setup.
 
-- **[`android/README.md`](android/README.md)** — build + sideload.
-- **[`server/README.md`](server/README.md)** — pairing, systemd, Docker.
+## Security
 
-## User flow
-
-1. **Home.** Five preset durations (15 / 30 / 45 / 60 / 90 min) plus a Custom row.
-2. **Custom length.** Hours × minutes reels with a live summary pane.
-3. **Confirmation.** Hero numeric flashes for ~3 s, then dismisses so you can
-   keep watching.
-4. **Last-60s overlay.** Top-right card with `+10 minutes` or `Keep watching`.
-   Ignore it and the TV goes to sleep when it hits zero.
-
-See `design/README.md` for the pixel-level spec.
-
-## Building the Fire TV app
-
-```bash
-cd android
-./gradlew assembleDebug
-```
-
-Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~10 MB).
-
-## Sideloading onto a Fire TV Stick
-
-Enable ADB on the device (Settings → My Fire TV → About → tap 7 × on the
-device name → Settings → My Fire TV → Developer options → ADB debugging on),
-then:
-
-```bash
-adb connect <FIRE_TV_IP>:5555
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-The app appears in *Your Apps & Games* thanks to the Leanback launcher entry.
-On first launch it asks for the Pi's LAN IP — that's it.
-
-## First-run configuration
-
-- **Pi IP:** LAN IP of the Pi running `server/bridge.py`.
-
-Stored in `EncryptedSharedPreferences` on the device. Nothing else to enter.
-
-## Security posture
-
-- `INTERNET` only. No storage, no location, no camera, no mic.
+- App permissions: `INTERNET` only. No storage, location, camera, or mic.
 - Cleartext HTTP is allowed app-wide (Android's network-security-config can't
-  restrict it to a CIDR range), but the app only ever talks to one
-  user-entered LAN IP on `:8765` — that's the runtime trust boundary.
-- The Pi bridge has no remote auth — it trusts whoever can reach it on the
-  LAN. Bind it to a private interface (don't port-forward `8765`) and that's
-  the entire trust boundary.
+  restrict to a CIDR), but the app only ever talks to the one user-entered LAN
+  IP on `:8765`.
+- The bridge has no remote auth — it trusts whoever can reach it on the LAN.
+  Don't port-forward `8765`.
 - Nothing leaves your LAN. No cloud, no analytics, no phone-home.
-
-## Status
-
-Works end-to-end for the author's LG + Pi + Fire TV Stick 4K Max setup.
-Rough edges still open:
-
-- Audio fade via `AudioManager` during the last 60 s isn't wired yet.
-
-Contributions — especially TV-compatibility PRs — welcome.
