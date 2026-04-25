@@ -5,11 +5,20 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,8 +33,19 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.firesleep.app.prefs.SecurePrefs
 import com.firesleep.app.timer.TimerController
 import com.firesleep.app.ui.ConfirmScreen
@@ -36,7 +56,9 @@ import com.firesleep.app.ui.HomeScreen
 import com.firesleep.app.ui.OverlayScreen
 import com.firesleep.app.ui.SettingsScreen
 import com.firesleep.app.ui.Tokens
+import com.firesleep.app.ui.WindowedShell
 import com.firesleep.app.ui.body
+import com.firesleep.app.ui.eyebrowSmall
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -52,7 +74,9 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             FireSleepTheme {
-                DesignCanvas { App(intent) }
+                WindowedShell {
+                    DesignCanvas { App(intent, dismiss = { finish() }) }
+                }
             }
         }
     }
@@ -62,7 +86,9 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         setContent {
             FireSleepTheme {
-                DesignCanvas { App(intent) }
+                WindowedShell {
+                    DesignCanvas { App(intent, dismiss = { finish() }) }
+                }
             }
         }
     }
@@ -81,7 +107,7 @@ private val ScreenSaver = Saver<Screen, Int>(
 )
 
 @Composable
-private fun App(intent: Intent?) {
+private fun App(intent: Intent?, dismiss: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { SecurePrefs(context) }
     val timerState by TimerController.state.collectAsState()
@@ -99,7 +125,7 @@ private fun App(intent: Intent?) {
             },
         )
     }
-    var confirmingMinutes by rememberSaveable { mutableIntStateOf(0) }
+    var confirmingSeconds by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(forceOverlay) {
         if (forceOverlay) screen = Screen.Warning
@@ -122,41 +148,52 @@ private fun App(intent: Intent?) {
         }
     }
 
+    BackHandler(enabled = screen == Screen.Home || screen == Screen.Running) { dismiss() }
+
     Box(modifier = Modifier.fillMaxSize().background(Tokens.BgCanvas)) {
         when (screen) {
-            Screen.Settings -> SettingsScreen(onSaved = { screen = Screen.Home })
+            Screen.Settings -> SettingsScreen(
+                onSaved = { screen = Screen.Home },
+                onBack = { if (prefs.isConfigured()) screen = Screen.Home else dismiss() },
+            )
             Screen.Home -> HomeScreen(
                 initialFocusIndex = focusIndexForPreset(prefs.lastPresetMinutes),
-                onPresetSelected = { mins ->
-                    prefs.lastPresetMinutes = mins
-                    confirmingMinutes = mins
-                    TimerController.start(context, mins)
+                onPresetSelected = { preset ->
+                    if (preset.minutes > 0) prefs.lastPresetMinutes = preset.minutes
+                    confirmingSeconds = preset.seconds
+                    TimerController.start(context, preset.seconds)
                     screen = Screen.Confirming
                 },
                 onCustomSelected = { screen = Screen.Custom },
+                onSettings = { screen = Screen.Settings },
+                onClose = dismiss,
             )
             Screen.Custom -> CustomScreen(
                 onBegin = { mins ->
-                    confirmingMinutes = mins
-                    TimerController.start(context, mins)
+                    confirmingSeconds = mins * 60
+                    TimerController.start(context, mins * 60)
                     screen = Screen.Confirming
                 },
                 onBack = { screen = Screen.Home },
             )
             Screen.Confirming -> ConfirmScreen(
-                minutes = confirmingMinutes,
-                onDismiss = { moveToBackground(context); screen = Screen.Running },
+                seconds = confirmingSeconds,
+                onDismiss = { screen = Screen.Running; dismiss() },
             )
-            Screen.Running -> {
-                // Intentionally empty — user's content is playing; we just need
-                // the activity alive so alarms keep firing through the service.
-            }
+            Screen.Running -> RunningStatus(
+                secondsRemaining = secondsRemaining,
+                onCancel = {
+                    TimerController.cancel(context)
+                    screen = Screen.Home
+                },
+                onClose = dismiss,
+            )
             Screen.Warning -> OverlayScreen(
                 secondsRemaining = secondsRemaining,
                 onSnooze = {
                     TimerController.addMinutes(context, 10)
                     screen = Screen.Running
-                    moveToBackground(context)
+                    dismiss()
                 },
                 onCancel = {
                     TimerController.cancel(context)
@@ -181,15 +218,83 @@ private fun App(intent: Intent?) {
     }
 }
 
-private fun focusIndexForPreset(minutes: Int): Int = when (minutes) {
-    15 -> 0; 30 -> 1; 45 -> 2; 60 -> 3; 90 -> 4
-    else -> 2
+@Composable
+private fun RunningStatus(
+    secondsRemaining: Long,
+    onCancel: () -> Unit,
+    onClose: () -> Unit,
+) {
+    var focus by remember { mutableIntStateOf(0) } // 0 = close (default), 1 = cancel
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    val mins = secondsRemaining / 60
+    val secs = secondsRemaining % 60
+    val timeStr = "%d:%02d".format(mins, secs)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft -> { focus = 0; true }
+                    Key.DirectionRight -> { focus = 1; true }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        if (focus == 0) onClose() else onCancel(); true
+                    }
+                    Key.Back, Key.Escape -> { onClose(); true }
+                    else -> false
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Sleep timer running".uppercase(), style = eyebrowSmall(Tokens.Accent))
+            Spacer(Modifier.height(20.dp))
+            Text(
+                timeStr,
+                style = body(Tokens.TextPrimary)
+                    .copy(fontSize = 120.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-4).sp, lineHeight = 120.sp),
+            )
+            Spacer(Modifier.height(40.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                StatusButton(text = "Close", focused = focus == 0)
+                StatusButton(text = "Cancel timer", focused = focus == 1)
+            }
+        }
+    }
 }
 
-private fun moveToBackground(context: android.content.Context) {
-    val home = Intent(Intent.ACTION_MAIN).apply {
-        addCategory(Intent.CATEGORY_HOME)
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+@Composable
+private fun StatusButton(text: String, focused: Boolean) {
+    val bg = if (focused) Tokens.Accent else Tokens.SurfaceSoft
+    val fg = if (focused) Tokens.AccentOn else Tokens.TextBody
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .border(
+                width = 1.dp,
+                color = if (focused) Color.Transparent else Tokens.Divider,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 28.dp, vertical = 16.dp),
+    ) {
+        Text(
+            text,
+            style = body(fg).copy(
+                fontSize = 22.sp,
+                fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal,
+            ),
+        )
     }
-    context.startActivity(home)
+}
+
+private fun focusIndexForPreset(minutes: Int): Int = when (minutes) {
+    // Index 0 is the TEST row — never default focus there.
+    15 -> 1; 30 -> 2; 45 -> 3; 60 -> 4; 90 -> 5
+    else -> 3
 }

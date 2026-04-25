@@ -19,6 +19,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 WORKDIR /app
 COPY bridge.py .
+COPY web ./web
 
 USER app
 EXPOSE 8765

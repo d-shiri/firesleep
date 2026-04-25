@@ -3,6 +3,7 @@ package com.firesleep.app.net
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class TvClient(private val baseUrl: String) {
@@ -13,14 +14,33 @@ class TvClient(private val baseUrl: String) {
         .retryOnConnectionFailure(true)
         .build()
 
-    fun health(): Result<Unit> = runCatching {
+    data class Health(val paired: Boolean)
+
+    fun health(): Result<Health> = runCatching {
         val req = Request.Builder()
             .url("$baseUrl/health")
             .get()
             .build()
         http.newCall(req).execute().use { resp ->
             check(resp.isSuccessful) { "health returned ${resp.code}" }
+            val body = resp.body?.string().orEmpty()
+            val paired = runCatching { JSONObject(body).optBoolean("paired", false) }.getOrDefault(false)
+            Health(paired = paired)
         }
+    }
+
+    /** Triggers the on-TV pairing prompt. Long timeout: user must accept on the LG remote. */
+    fun pair(): Result<Unit> = runCatching {
+        val req = Request.Builder()
+            .url("$baseUrl/pair")
+            .post("".toRequestBody(null))
+            .build()
+        http.newBuilder()
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+            .newCall(req).execute().use { resp ->
+                check(resp.isSuccessful) { "pair returned ${resp.code}" }
+            }
     }
 
     fun powerOff(): Result<Unit> = runCatching {

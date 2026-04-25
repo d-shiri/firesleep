@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FireSleep</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="brand">
+        <span class="flame" aria-hidden="true"></span>
+        <span class="wordmark">FireSleep</span>
+      </div>
+      <p class="sub">Bridge admin · LG webOS</p>
+    </header>
+
+    <section class="card">
+      <h2>Connection</h2>
+      <p class="muted">Hostname or LAN IP of the LG TV. Saved to <code>/data/config.json</code>.</p>
+      <div class="row">
+        <label>
+          <span class="label">TV host</span>
+          <input id="tv-host" type="text" placeholder="e.g. LGwebOSTV or 192.168.2.226" />
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <span class="label">Log level</span>
+          <select id="log-level">
+            <option value="DEBUG">DEBUG</option>
+            <option value="INFO">INFO</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="save" class="primary">Save</button>
+        <span id="save-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Pairing
+        <span id="paired-badge" class="badge">…</span>
+      </h2>
+      <p class="muted">First-time pairing prompts you on the TV — accept with the LG remote.</p>
+      <div class="actions">
+        <button id="pair" class="primary">Pair with TV</button>
+        <button id="unpair" class="ghost danger">Forget pairing</button>
+        <span id="pair-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Test</h2>
+      <p class="muted">Powers off the TV right now. Useful for verifying setup.</p>
+      <div class="actions">
+        <button id="poweroff" class="ghost">Power off TV</button>
+        <span id="poweroff-status" class="status"></span>
+      </div>
+    </section>
+
+    <footer>
+      <span class="muted">FireSleep bridge · port 8765</span>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

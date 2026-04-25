@@ -30,14 +30,17 @@ private val timeFmt = DateTimeFormatter.ofPattern("h:mm a")
 
 @Composable
 fun ConfirmScreen(
-    minutes: Int,
+    seconds: Int,
     onDismiss: () -> Unit,
 ) {
-    LaunchedEffect(minutes) {
+    LaunchedEffect(seconds) {
         delay(3_000)
         onDismiss()
     }
-    val offAt = LocalTime.now().plusMinutes(minutes.toLong()).format(timeFmt)
+    val showSeconds = seconds < 60
+    val heroNumber = if (showSeconds) seconds.toString() else (seconds / 60).toString()
+    val heroUnit = if (showSeconds) "sec" else "min"
+    val offAt = LocalTime.now().plusSeconds(seconds.toLong()).format(timeFmt)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -59,10 +62,10 @@ fun ConfirmScreen(
             )
             Spacer(Modifier.height(32.dp))
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(minutes.toString(), style = heroNumeric())
+                Text(heroNumber, style = heroNumeric())
                 Spacer(Modifier.size(16.dp))
                 Text(
-                    "min",
+                    heroUnit,
                     style = body(Tokens.TextMuted).copy(fontSize = 72.sp, letterSpacing = 0.sp),
                     modifier = Modifier.padding(bottom = 48.dp),
                 )

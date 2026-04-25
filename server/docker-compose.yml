@@ -7,7 +7,10 @@ services:
     ports:
       - "8765:8765"
     environment:
-      TV_HOST: ${TV_HOST:?set TV_HOST (hostname or IP)}
+      # TV_HOST is optional: leave unset and configure via the web UI at
+      # http://<host>:8765/. If set, it bootstraps the value before the
+      # user opens the UI (the UI's saved value, if any, takes precedence).
+      TV_HOST: ${TV_HOST:-}
       LG_KEY_FILE: /data/lg_key.json
     volumes:
       - lg-key:/data

@@ -16,7 +16,7 @@ object TimerController {
     data class State(
         val running: Boolean = false,
         val endAtElapsedMs: Long = 0L,
-        val totalMinutes: Int = 0,
+        val totalSeconds: Int = 0,
         val warningActive: Boolean = false,
     )
 
@@ -31,17 +31,17 @@ object TimerController {
     }
 
     @SuppressLint("MissingPermission")
-    fun start(context: Context, totalMinutes: Int) {
+    fun start(context: Context, totalSeconds: Int) {
         cancelAlarms(context)
         val now = SystemClock.elapsedRealtime()
-        val endAt = now + totalMinutes * 60_000L
+        val endAt = now + totalSeconds * 1000L
         _state.value = State(
             running = true,
             endAtElapsedMs = endAt,
-            totalMinutes = totalMinutes,
+            totalSeconds = totalSeconds,
             warningActive = false,
         )
-        scheduleAlarms(context, endAt)
+        scheduleAlarms(context, endAt, totalSeconds)
         ContextCompat_startForegroundService(context)
     }
 
@@ -50,13 +50,14 @@ object TimerController {
         val s = _state.value
         if (!s.running) return
         val newEnd = s.endAtElapsedMs + minutes * 60_000L
+        val newTotal = s.totalSeconds + minutes * 60
         _state.value = s.copy(
             endAtElapsedMs = newEnd,
-            totalMinutes = s.totalMinutes + minutes,
+            totalSeconds = newTotal,
             warningActive = false,
         )
         cancelAlarms(context)
-        scheduleAlarms(context, newEnd)
+        scheduleAlarms(context, newEnd, newTotal)
     }
 
     fun cancel(context: Context) {
@@ -73,9 +74,19 @@ object TimerController {
         _state.value = State()
     }
 
-    private fun scheduleAlarms(context: Context, endAtElapsedMs: Long) {
+    /**
+     * Warning fires `warningWindowMs(totalSeconds)` before expiry. For normal
+     * timers this is a flat 60s. For the short test preset (≤ 60s) we scale it
+     * down to half the duration so the user can actually see the overlay.
+     */
+    private fun warningWindowMs(totalSeconds: Int): Long {
+        val totalMs = totalSeconds * 1000L
+        return minOf(60_000L, totalMs / 2)
+    }
+
+    private fun scheduleAlarms(context: Context, endAtElapsedMs: Long, totalSeconds: Int) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val warnAt = endAtElapsedMs - 60_000L
+        val warnAt = endAtElapsedMs - warningWindowMs(totalSeconds)
 
         val warnPi = pending(context, TimerReceiver.ACTION_WARN, REQ_WARN)
         val expirePi = pending(context, TimerReceiver.ACTION_EXPIRE, REQ_EXPIRE)

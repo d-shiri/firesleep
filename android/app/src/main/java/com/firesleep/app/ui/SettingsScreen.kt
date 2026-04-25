@@ -11,7 +11,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -45,25 +54,40 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SettingsScreen(onSaved: () -> Unit) {
+fun SettingsScreen(onSaved: () -> Unit, onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { SecurePrefs(context) }
     var ip by remember { mutableStateOf(prefs.piIp) }
     var status by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val rootFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
+    val scroll = rememberScrollState()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Tokens.BgCanvas),
+            .background(Tokens.BgCanvas)
+            .focusRequester(rootFocus)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown &&
+                    (event.key == Key.Back || event.key == Key.Escape)
+                ) {
+                    onBack(); true
+                } else false
+            },
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            modifier = Modifier.width(720.dp),
+            modifier = Modifier
+                .width(720.dp)
+                .verticalScroll(scroll)
+                .padding(vertical = 32.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             LogoEyebrow()
-            Text("First-time setup", style = heroHeadline().copy(fontSize = 56.sp))
+            Text("Settings", style = heroHeadline().copy(fontSize = 56.sp))
             Text(
                 "Point FireSleep at the Raspberry Pi that powers your TV off.",
                 style = body(Tokens.TextMuted),
@@ -84,12 +108,23 @@ fun SettingsScreen(onSaved: () -> Unit) {
                 }
                 SecondaryButton("Test connection") {
                     scope.launch {
-                        val r = withContext(Dispatchers.IO) {
-                            TvClient(TvClient.baseUrlFor(ip.trim())).health()
-                        }
-                        status = r.fold(
-                            onSuccess = { "Reached the Pi ✓" },
-                            onFailure = { "Couldn't reach the Pi: ${it.message}" },
+                        val client = TvClient(TvClient.baseUrlFor(ip.trim()))
+                        status = "Reaching the Pi…"
+                        val h = withContext(Dispatchers.IO) { client.health() }
+                        h.fold(
+                            onSuccess = { health ->
+                                if (health.paired) {
+                                    status = "Reached the Pi ✓ — TV already paired."
+                                } else {
+                                    status = "Reached the Pi ✓ — accept the pairing prompt on your TV…"
+                                    val p = withContext(Dispatchers.IO) { client.pair() }
+                                    status = p.fold(
+                                        onSuccess = { "Paired ✓" },
+                                        onFailure = { "Pairing failed: ${it.message}" },
+                                    )
+                                }
+                            },
+                            onFailure = { status = "Couldn't reach the Pi: ${it.message}" },
                         )
                     }
                 }
@@ -97,6 +132,36 @@ fun SettingsScreen(onSaved: () -> Unit) {
             if (status.isNotBlank()) {
                 Text(status, style = body(Tokens.TextMuted))
             }
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Triple-press shortcut".uppercase(),
+                style = eyebrowSmall(Tokens.TextDim),
+            )
+            Text(
+                "Press the ≡ Menu button three times from any app to open FireSleep. " +
+                    "Enable it under Settings → Accessibility → FireSleep.",
+                style = body(Tokens.TextMuted).copy(fontSize = 20.sp),
+            )
+            Row {
+                SecondaryButton("Open Accessibility settings") {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }
+            }
+            Text(
+                "If FireSleep doesn't appear in Accessibility on Fire TV, enable it once over ADB:\n" +
+                    "  adb shell settings put secure enabled_accessibility_services " +
+                    "com.firesleep.app/com.firesleep.app.access.FireSleepAccessibilityService\n" +
+                    "  adb shell settings put secure accessibility_enabled 1",
+                style = body(Tokens.TextDim).copy(fontSize = 16.sp, fontFamily = Tokens.Mono),
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("◀ Back to return", style = body(Tokens.TextDim).copy(fontSize = 16.sp))
         }
     }
 }

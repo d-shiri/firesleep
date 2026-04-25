@@ -36,4 +36,8 @@
     <string name="notif_title">FireSleep timer</string>
     <string name="notif_running">TV off in %1$s</string>
     <string name="error_poweroff">Couldn\'t reach the Pi — TV will not turn off.\n%1$s</string>
+    <string name="accessibility_summary">Triple-press Menu to open FireSleep</string>
+    <string name="accessibility_description">Lets you open FireSleep from any app on your Fire TV by triple-pressing the Menu button (≡) on the remote. FireSleep doesn\'t read screen content — it only watches for that one shortcut.</string>
+    <string name="enable_shortcut">Enable triple-press shortcut</string>
+    <string name="shortcut_explainer">Open Settings → Accessibility → FireSleep, then turn it on. After that, press the ≡ Menu button three times from any app to bring up the timer.</string>
 </resources>

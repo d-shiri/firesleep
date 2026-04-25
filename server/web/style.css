@@ -1,0 +1,219 @@
+:root {
+  --bg: #0a0907;
+  --surface: #14110d;
+  --surface-soft: rgba(232, 224, 212, 0.06);
+  --divider: rgba(232, 224, 212, 0.10);
+  --text: #f2ead8;
+  --text-muted: rgba(232, 224, 212, 0.55);
+  --text-dim: rgba(232, 224, 212, 0.40);
+  --accent: #d9a46a;
+  --accent-on: #0a0907;
+  --danger: #d97a6a;
+  --ok: #a3d96a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 64px 32px 48px;
+}
+
+header {
+  margin-bottom: 40px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.flame {
+  width: 28px;
+  height: 36px;
+  background: linear-gradient(180deg, #5a3818 0%, var(--accent) 60%, #f2c98a 100%);
+  clip-path: polygon(50% 0%, 80% 25%, 95% 55%, 85% 85%, 50% 100%, 15% 85%, 5% 55%, 20% 25%);
+}
+
+.wordmark {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.sub {
+  margin: 12px 0 0 42px;
+  color: var(--text-muted);
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  padding: 28px 28px 24px;
+  margin-bottom: 20px;
+}
+
+.card h2 {
+  margin: 0 0 4px;
+  font-weight: 400;
+  font-size: 22px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 4px 0 18px;
+}
+
+code {
+  background: var(--surface-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.row {
+  margin-bottom: 14px;
+}
+
+label {
+  display: block;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+input[type="text"], select {
+  width: 100%;
+  background: var(--surface-soft);
+  border: 1px solid transparent;
+  color: var(--text);
+  padding: 12px 14px;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 120ms;
+}
+
+input[type="text"]:focus, select:focus {
+  border-color: var(--accent);
+}
+
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+                    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) center, calc(100% - 12px) center;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+button {
+  font: inherit;
+  font-weight: 500;
+  font-size: 15px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: filter 120ms, background 120ms, color 120ms;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+button.ghost {
+  background: var(--surface-soft);
+  color: var(--text);
+  border-color: var(--divider);
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--divider);
+}
+
+button.danger {
+  color: var(--danger);
+}
+
+.status {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.status.ok { color: var(--ok); }
+.status.err { color: var(--danger); }
+
+.badge {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.badge.ok { background: rgba(163, 217, 106, 0.15); color: var(--ok); }
+.badge.warn { background: rgba(217, 164, 106, 0.15); color: var(--accent); }
+
+footer {
+  text-align: center;
+  margin-top: 40px;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
