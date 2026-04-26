@@ -36,6 +36,11 @@ const BRAND_HELP = {
   firetv: "Sends KEYCODE_SLEEP over ADB. The Fire TV goes to standby and pulls the TV down over HDMI-CEC. Enable ADB debugging on the Fire TV first; pairing pops 'Allow USB debugging' there — tick 'Always allow'.",
 };
 
+const BRAND_LABEL = {
+  lg: "LG webOS",
+  firetv: "Fire TV → CEC",
+};
+
 function brandSelectHtml(selected) {
   return `
     <select class="tv-brand">
@@ -45,42 +50,64 @@ function brandSelectHtml(selected) {
 }
 
 function tvCardHtml(tv) {
+  const dotClass = tv.paired ? "ok" : "warn";
   const pairedClass = tv.paired ? "ok" : "warn";
   const pairedText = tv.paired ? "Paired" : "Not paired";
+  const brandLabel = BRAND_LABEL[tv.brand] || tv.brand;
   return `
-  <section class="card tv-card" data-id="${esc(tv.id)}">
-    <div class="tv-header">
-      <input class="tv-name" type="text" value="${esc(tv.name)}" />
-      <span class="badge ${pairedClass}">${pairedText}</span>
-      <button class="tv-delete ghost danger" title="Remove this TV">Remove</button>
+  <article class="tv-card" data-id="${esc(tv.id)}">
+    <div class="tv-row" data-toggle>
+      <span class="dot ${dotClass}" title="${pairedText}"></span>
+      <div class="info">
+        <span class="name">${esc(tv.name)}</span>
+        <span class="meta">
+          <span class="badge brand">${esc(brandLabel)}</span>
+          <span class="host">${esc(tv.host)}</span>
+        </span>
+      </div>
+      <div class="quick">
+        <span class="badge ${pairedClass}">${pairedText}</span>
+        <button class="ghost small tv-poweroff" title="Power off">Power off</button>
+        <span class="chevron">›</span>
+      </div>
     </div>
-    <div class="row">
-      <label>
-        <span class="label">Backend</span>
-        ${brandSelectHtml(tv.brand)}
-      </label>
+    <div class="tv-detail">
+      <div class="row">
+        <label>
+          <span class="label">Name</span>
+          <input class="tv-name" type="text" value="${esc(tv.name)}" />
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <span class="label">Backend</span>
+          ${brandSelectHtml(tv.brand)}
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <span class="label">Host</span>
+          <input class="tv-host" type="text" value="${esc(tv.host)}" />
+        </label>
+      </div>
+      <p class="muted small tv-help">${esc(BRAND_HELP[tv.brand] || "")}</p>
+      <div class="actions">
+        <button class="tv-save primary">Save changes</button>
+        <button class="tv-pair ghost">${tv.paired ? "Re-pair" : "Pair"}</button>
+        <button class="tv-unpair ghost danger">Forget pairing</button>
+        <button class="tv-delete ghost danger" style="margin-left:auto">Remove</button>
+        <span class="status tv-status"></span>
+      </div>
     </div>
-    <div class="row">
-      <label>
-        <span class="label">Host</span>
-        <input class="tv-host" type="text" value="${esc(tv.host)}" />
-      </label>
-    </div>
-    <p class="muted tv-help">${esc(BRAND_HELP[tv.brand] || "")}</p>
-    <div class="actions">
-      <button class="tv-save primary">Save</button>
-      <button class="tv-pair ghost">Pair</button>
-      <button class="tv-poweroff ghost">Power off</button>
-      <button class="tv-unpair ghost danger">Forget pairing</button>
-      <span class="status tv-status"></span>
-    </div>
-  </section>`;
+  </article>`;
 }
 
-function setBadge(el, paired) {
-  el.textContent = paired ? "Paired" : "Not paired";
-  el.classList.remove("ok", "warn");
-  el.classList.add(paired ? "ok" : "warn");
+function updateStats(tvs) {
+  const total = tvs.length;
+  const paired = tvs.filter((t) => t.paired).length;
+  $("stat-total").textContent = total;
+  $("stat-paired").textContent = paired;
+  $("stat-unpaired").textContent = total - paired;
 }
 
 async function refreshTvs() {
@@ -88,8 +115,10 @@ async function refreshTvs() {
   try {
     const tvs = await api("GET", "/tvs");
     list.innerHTML = tvs.map(tvCardHtml).join("");
+    updateStats(tvs);
   } catch (e) {
     list.innerHTML = `<p class="status err">Couldn't load TVs: ${esc(e.message)}</p>`;
+    updateStats([]);
   }
 }
 
@@ -111,8 +140,8 @@ function tvFromCard(card) {
   };
 }
 
-async function withButton(btn, statusEl, busyMsg, fn) {
-  const all = btn.parentElement.querySelectorAll("button");
+async function withButtons(card, statusEl, busyMsg, fn) {
+  const all = card.querySelectorAll("button");
   all.forEach((b) => (b.disabled = true));
   setStatus(statusEl, busyMsg);
   try {
@@ -126,28 +155,47 @@ async function withButton(btn, statusEl, busyMsg, fn) {
 }
 
 $("tv-list").addEventListener("click", async (ev) => {
-  const btn = ev.target.closest("button");
-  if (!btn) return;
-  const card = btn.closest(".tv-card");
+  const card = ev.target.closest(".tv-card");
   if (!card) return;
+
+  const toggleZone = ev.target.closest("[data-toggle]");
+  const btn = ev.target.closest("button");
+
+  // Toggle expand only when clicking the row (not buttons or inputs)
+  if (toggleZone && !btn) {
+    card.classList.toggle("expanded");
+    return;
+  }
+  if (!btn) return;
+
   const tv = tvFromCard(card);
   const status = card.querySelector(".tv-status");
 
+  if (btn.classList.contains("tv-poweroff")) {
+    if (!confirm(`Power off "${tv.name}" now?`)) return;
+    try {
+      await withButtons(card, status, "Sending…", async () => {
+        await api("POST", `/tvs/${tv.id}/poweroff`);
+        setStatus(status, "TV acknowledged ✓", "ok");
+      });
+    } catch { /* shown */ }
+    return;
+  }
+
   if (btn.classList.contains("tv-save")) {
     try {
-      await withButton(btn, status, "Saving…", async () => {
+      await withButtons(card, status, "Saving…", async () => {
         await api("PUT", `/tvs/${tv.id}`, { name: tv.name, brand: tv.brand, host: tv.host });
         setStatus(status, "Saved ✓", "ok");
-        // Brand changes can drop the paired flag — re-render to reflect that.
         await refreshTvs();
       });
-    } catch { /* shown in status */ }
+    } catch { /* shown */ }
     return;
   }
 
   if (btn.classList.contains("tv-pair")) {
     try {
-      await withButton(btn, status, "Accept the prompt on the TV…", async () => {
+      await withButtons(card, status, "Accept the prompt on the TV…", async () => {
         await api("POST", `/tvs/${tv.id}/pair`);
         setStatus(status, "Paired ✓", "ok");
         await refreshTvs();
@@ -159,7 +207,7 @@ $("tv-list").addEventListener("click", async (ev) => {
   if (btn.classList.contains("tv-unpair")) {
     if (!confirm(`Forget pairing for "${tv.name}"?`)) return;
     try {
-      await withButton(btn, status, "Forgetting…", async () => {
+      await withButtons(card, status, "Forgetting…", async () => {
         await api("POST", `/tvs/${tv.id}/unpair`);
         setStatus(status, "Forgotten ✓", "ok");
         await refreshTvs();
@@ -168,21 +216,10 @@ $("tv-list").addEventListener("click", async (ev) => {
     return;
   }
 
-  if (btn.classList.contains("tv-poweroff")) {
-    if (!confirm(`Power off "${tv.name}" now?`)) return;
-    try {
-      await withButton(btn, status, "Sending…", async () => {
-        await api("POST", `/tvs/${tv.id}/poweroff`);
-        setStatus(status, "TV acknowledged ✓", "ok");
-      });
-    } catch { /* shown */ }
-    return;
-  }
-
   if (btn.classList.contains("tv-delete")) {
     if (!confirm(`Remove "${tv.name}" from the bridge? This also forgets its pairing.`)) return;
     try {
-      await withButton(btn, status, "Removing…", async () => {
+      await withButtons(card, status, "Removing…", async () => {
         await api("DELETE", `/tvs/${tv.id}`);
         await refreshTvs();
       });
@@ -211,6 +248,33 @@ $("save-config").addEventListener("click", async () => {
   }
 });
 
+/* ---- Add-TV modal ---- */
+
+const modal = $("add-modal");
+
+function openAddModal() {
+  modal.hidden = false;
+  setStatus($("add-status"), "");
+  $("new-help").textContent = BRAND_HELP[$("new-brand").value] || "";
+  setTimeout(() => $("new-name").focus(), 50);
+}
+
+function closeAddModal() {
+  modal.hidden = true;
+}
+
+$("open-add").addEventListener("click", openAddModal);
+$("close-add").addEventListener("click", closeAddModal);
+$("cancel-add").addEventListener("click", closeAddModal);
+
+modal.addEventListener("click", (ev) => {
+  if (ev.target === modal) closeAddModal();
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !modal.hidden) closeAddModal();
+});
+
 $("new-brand").addEventListener("change", () => {
   $("new-help").textContent = BRAND_HELP[$("new-brand").value] || "";
 });
@@ -232,6 +296,7 @@ $("add-tv").addEventListener("click", async () => {
     $("new-name").value = "";
     $("new-host").value = "";
     await refreshTvs();
+    closeAddModal();
   } catch (e) {
     setStatus($("add-status"), e.message, "err");
   } finally {
@@ -239,6 +304,5 @@ $("add-tv").addEventListener("click", async () => {
   }
 });
 
-$("new-help").textContent = BRAND_HELP[$("new-brand").value] || "";
 refreshConfig();
 refreshTvs();

@@ -3,78 +3,101 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
   <title>FireSleep</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="container">
-    <header>
-      <img class="logo" src="logo.png" alt="FireSleep" />
-      <p class="sub">Bridge admin</p>
+    <header class="page-header">
+      <div class="brand">
+        <img class="logo" src="logo.png" alt="FireSleep" />
+        <p class="sub">Bridge admin</p>
+      </div>
+      <div class="stats" id="stats">
+        <div class="stat"><span class="stat-num" id="stat-total">0</span><span class="stat-label">TVs</span></div>
+        <div class="stat"><span class="stat-num ok" id="stat-paired">0</span><span class="stat-label">Paired</span></div>
+        <div class="stat"><span class="stat-num warn" id="stat-unpaired">0</span><span class="stat-label">Unpaired</span></div>
+      </div>
     </header>
 
-    <section class="card">
-      <h2>Settings</h2>
-      <p class="muted">Bridge-wide options. Saved to <code>/data/config.json</code>.</p>
-      <div class="row">
-        <label>
-          <span class="label">Log level</span>
-          <select id="log-level">
-            <option value="DEBUG">DEBUG</option>
-            <option value="INFO">INFO</option>
-            <option value="WARNING">WARNING</option>
-            <option value="ERROR">ERROR</option>
-          </select>
-        </label>
+    <section class="list-section">
+      <div class="list-header">
+        <h2>Televisions</h2>
+        <button id="open-add" class="primary add-btn" title="Add a TV">
+          <span class="plus">+</span><span class="add-label">Add TV</span>
+        </button>
       </div>
-      <div class="actions">
-        <button id="save-config" class="primary">Save</button>
-        <span id="config-status" class="status"></span>
-      </div>
+      <div id="tv-list" class="tv-list"></div>
     </section>
 
-    <h2 class="section-title">TVs</h2>
-    <p class="muted section-sub">
-      Each TV is paired and powered off independently. <code>POST /poweroff</code>
-      fans out to all of them — the Fire TV APK doesn't need to know about
-      individual TVs.
-    </p>
-    <div id="tv-list"></div>
-
-    <section class="card add-tv">
-      <h2>Add a TV</h2>
-      <div class="row">
-        <label>
-          <span class="label">Name</span>
-          <input id="new-name" type="text" placeholder="e.g. Living room" />
-        </label>
+    <details class="settings">
+      <summary>
+        <span class="gear" aria-hidden="true">⚙</span>
+        <span>Settings</span>
+        <span class="muted thin">Bridge-wide options · stored in <code>/data/config.json</code></span>
+      </summary>
+      <div class="settings-body">
+        <div class="row">
+          <label>
+            <span class="label">Log level</span>
+            <select id="log-level">
+              <option value="DEBUG">DEBUG</option>
+              <option value="INFO">INFO</option>
+              <option value="WARNING">WARNING</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="save-config" class="primary">Save</button>
+          <span id="config-status" class="status"></span>
+        </div>
       </div>
-      <div class="row">
-        <label>
-          <span class="label">Backend</span>
-          <select id="new-brand">
-            <option value="lg">LG webOS (direct)</option>
-            <option value="firetv">Fire TV → CEC (Samsung / Sony / Vizio / Hisense / …)</option>
-          </select>
-        </label>
-      </div>
-      <div class="row">
-        <label>
-          <span class="label">Host</span>
-          <input id="new-host" type="text" placeholder="hostname or IP" />
-        </label>
-      </div>
-      <p class="muted" id="new-help"></p>
-      <div class="actions">
-        <button id="add-tv" class="primary">Add TV</button>
-        <span id="add-status" class="status"></span>
-      </div>
-    </section>
+    </details>
 
     <footer>
       <span class="muted">FireSleep bridge · port 8765</span>
     </footer>
   </main>
+
+  <div class="modal-backdrop" id="add-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
+      <div class="modal-header">
+        <h2 id="add-title">Add a TV</h2>
+        <button class="icon-btn" id="close-add" title="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <label>
+            <span class="label">Name</span>
+            <input id="new-name" type="text" placeholder="e.g. Living room" autocomplete="off" />
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            <span class="label">Backend</span>
+            <select id="new-brand">
+              <option value="lg">LG webOS (direct)</option>
+              <option value="firetv">Fire TV → CEC (Samsung / Sony / Vizio / Hisense / …)</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            <span class="label">Host</span>
+            <input id="new-host" type="text" placeholder="hostname or IP" autocomplete="off" />
+          </label>
+        </div>
+        <p class="muted small" id="new-help"></p>
+      </div>
+      <div class="modal-footer">
+        <span id="add-status" class="status"></span>
+        <button class="ghost" id="cancel-add">Cancel</button>
+        <button id="add-tv" class="primary">Add TV</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
