@@ -36,29 +36,15 @@ header {
   margin-bottom: 40px;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.flame {
-  width: 28px;
-  height: 36px;
-  background: linear-gradient(180deg, #5a3818 0%, var(--accent) 60%, #f2c98a 100%);
-  clip-path: polygon(50% 0%, 80% 25%, 95% 55%, 85% 85%, 50% 100%, 15% 85%, 5% 55%, 20% 25%);
-}
-
-.wordmark {
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: 4px;
-  color: var(--accent);
-  text-transform: uppercase;
+.logo {
+  display: block;
+  height: 96px;
+  width: auto;
+  margin: 0 0 4px -16px;
 }
 
 .sub {
-  margin: 12px 0 0 42px;
+  margin: 4px 0 0 4px;
   color: var(--text-muted);
   font-size: 14px;
   letter-spacing: 1px;

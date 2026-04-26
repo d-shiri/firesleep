@@ -7,12 +7,14 @@ services:
     ports:
       - "8765:8765"
     environment:
-      # TV_HOST is optional: leave unset and configure via the web UI at
-      # http://<host>:8765/. If set, it bootstraps the value before the
-      # user opens the UI (the UI's saved value, if any, takes precedence).
+      # TV_HOST/TV_BRAND are optional: leave unset and configure via the
+      # web UI at http://<host>:8765/. If set, they bootstrap a single TV
+      # only on first run (when no TVs exist yet); ignored thereafter.
       TV_HOST: ${TV_HOST:-}
-      LG_KEY_FILE: /data/lg_key.json
+      TV_BRAND: ${TV_BRAND:-}
     volumes:
+      # Volume name kept as `lg-key` for upgrade compatibility — it now
+      # holds the multi-TV config and every backend's keys, not just LG.
       - lg-key:/data
     read_only: true
     cap_drop: [ALL]

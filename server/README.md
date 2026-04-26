@@ -1,13 +1,15 @@
-# FireSleep bridge — the thing that actually turns the TV off
+# FireSleep bridge — the thing that actually turns the TV(s) off
 
 A tiny FastAPI service that runs on a box on your LAN (a Raspberry Pi is the
 obvious choice — always on, always idle). The Fire TV app (`../android/`)
 calls it when the sleep timer expires; this service then does the
-vendor-specific work of telling the TV to power off.
+vendor-specific work of telling each configured TV to power off.
 
 Keeping vendor logic here, not in the APK, is the whole point. The app stays
 tiny and TV-brand-agnostic; this directory is where you plug in support for
-whatever TV you actually own.
+whatever TV you actually own. The bridge supports **multiple TVs** — each
+with its own backend, host, and pairing key — and `POST /poweroff` fans out
+to all of them.
 
 The service has **no remote auth** — it trusts whoever can reach it on the
 LAN. Bind it to a private interface (don't port-forward `8765`) and that's
@@ -39,20 +41,36 @@ If you add a new backend, please:
 
 ## Endpoints
 
-| Method | Path        | Purpose                                       |
-|--------|-------------|-----------------------------------------------|
-| GET    | `/health`   | Liveness check, reports whether TV is paired  |
-| POST   | `/pair`     | Trigger pairing (accept the prompt on the TV) |
-| POST   | `/poweroff` | Power off the paired TV                       |
+| Method | Path                       | Purpose                                                                |
+|--------|----------------------------|------------------------------------------------------------------------|
+| GET    | `/health`                  | Liveness check                                                         |
+| GET    | `/config`                  | Bridge-wide settings (log level)                                       |
+| POST   | `/config`                  | Update bridge-wide settings                                            |
+| GET    | `/tvs`                     | List every configured TV with its `paired` state                       |
+| POST   | `/tvs`                     | Add a TV (`{name, brand, host}`)                                       |
+| GET    | `/tvs/{id}`                | Single TV                                                              |
+| PUT    | `/tvs/{id}`                | Update name / brand / host. Brand changes drop the paired flag.        |
+| DELETE | `/tvs/{id}`                | Remove a TV and forget its pairing                                     |
+| POST   | `/tvs/{id}/pair`           | Pair this TV (accept prompt on the device)                             |
+| POST   | `/tvs/{id}/unpair`         | Forget this TV's pairing                                               |
+| POST   | `/tvs/{id}/poweroff`       | Power off this TV                                                      |
+| POST   | `/poweroff`                | Best-effort fan-out across all TVs. Returns 200 + per-TV results.      |
 
-## Configuring `TV_HOST`
+`POST /poweroff` always returns 200 when at least one TV is configured, so a
+sleep-timer client (the Fire TV APK) doesn't need to know about individual
+TVs and won't page on a single-TV failure. Inspect the `results` array or
+the bridge log to see which TVs failed.
 
-The bridge takes a hostname *or* an IP — whichever is more stable on your LAN.
-The hostname is resolved at every connect, so DHCP changes don't break it.
+## Configuring TVs
+
+Add TVs through the web UI (`http://<PI_IP>:8765/`) or via `POST /tvs`. Each
+TV needs a `name`, a `brand` (`lg` or `firetv`), and a `host`. The host can
+be a hostname or an IP — it's resolved at every connect, so DHCP changes
+don't break things.
 
 | Approach                          | Works in Docker bridge? | Notes                                           |
 |-----------------------------------|-------------------------|-------------------------------------------------|
-| Direct IP (`192.168.2.226`)       | Yes                     | Simple but breaks if the TV's lease expires.    |
+| Direct IP (`192.168.2.226`)       | Yes                     | Simple but breaks if the lease expires.         |
 | DHCP-registered name (`LGwebOSTV`)| Yes                     | Works on most consumer routers automatically.   |
 | mDNS (`LGwebOSTV.local`)          | **No** (in bridge mode) | Set `network_mode: host` in compose to use mDNS.|
 | `/etc/hosts` entry on the Pi      | Yes                     | Always works; doesn't propagate to containers.  |
@@ -66,51 +84,68 @@ client list.
 > `.local` resolution from inside the container, switch the compose file to
 > `network_mode: host`. For DHCP-registered names, bridge networking is fine.
 
+### Bootstrap from env (first run only)
+
+If `config.json` is absent or has no TVs, the bridge will create one TV
+from `TV_HOST` / `TV_BRAND` env vars at startup. Once any TV exists, env
+vars are ignored — the web UI / API is the source of truth.
+
+### Migrating from the single-TV layout
+
+If you're upgrading from the pre-multi-TV bridge, on first start the
+service rewrites `config.json` into the new shape and renames
+`lg_key.json` → `lg_key_<id>.json`. No re-pairing required.
+
 ## One-time pairing (LG webOS)
 
-The first time the Pi talks to the TV, webOS prompts for permission on the
-TV screen. Approve it — the bridge writes `~/lg_key.json` so future sessions
-skip the prompt.
+The first time the Pi talks to a webOS TV, the TV prompts on-screen for
+permission. Approve it — the bridge writes `lg_key_<id>.json` (one per TV)
+under `/data` so future sessions skip the prompt.
 
-You can either:
+From the web UI: add the TV, click **Pair**, accept on the TV. Or by API:
 
-- **Use the bridge itself:** start the service (see below), then `curl -X
-  POST http://<PI_IP>:8765/pair` and accept the prompt on the TV.
-- **Run the standalone script:** `cd server && TV_HOST=LGwebOSTV uv run
-  test_pairing.py`.
+```bash
+curl -X POST http://<PI_IP>:8765/tvs/<id>/pair
+```
 
 ## One-time pairing (Fire TV)
 
-For the `TV_BRAND=firetv` backend, `TV_HOST` is the **Fire TV's** IP, not
-the TV's. Setup:
+The Fire TV backend's `host` is the **Fire TV's** IP, not the TV's. The
+Fire TV gets `KEYCODE_SLEEP` over ADB, goes to standby, and pulls the TV
+down over HDMI-CEC. One-time setup per Fire TV:
 
-1. On the Fire TV: *Settings → My Fire TV → Developer options → ADB
-   debugging: ON*. (If "Developer options" isn't visible, open *About →
-   Fire TV Stick* and click the device name seven times.)
-2. From the bridge: `curl -X POST http://<PI_IP>:8765/pair`. The Fire TV
-   shows "Allow USB debugging from this computer?" — accept and tick
-   **"Always allow from this computer"** so the key sticks across reboots.
-3. The bridge persists its RSA key as `/data/adb_key{,.pub}`.
+1. *Settings → My Fire TV → Developer options → ADB debugging: ON*. (If
+   "Developer options" isn't visible, open *About → Fire TV Stick* and
+   click the device name seven times.)
+2. Add the Fire TV in the web UI (or `POST /tvs`) and click **Pair**.
+   The Fire TV shows "Allow USB debugging from this computer?" — accept
+   and tick **"Always allow from this computer"** so the key sticks
+   across reboots.
+3. The bridge persists a single RSA key (`/data/adb_key{,.pub}`) shared
+   across every Fire TV you pair — each Fire TV trusts the Pi
+   independently.
 
-If the Fire TV ever forgets the key (firmware updates have done this in
-the past), `curl -X POST http://<PI_IP>:8765/pair` again and re-accept.
+If a Fire TV ever forgets the key (firmware updates have done this in the
+past), click **Pair** again and re-accept on that Fire TV.
 
 ## Running the service
 
-The service needs `TV_HOST` (hostname or IP) set in the environment.
-Optionally `LG_KEY_FILE` if you want to override where the pairing key is
-stored.
+You don't need any env vars to start — open the web UI on first run and add
+your TVs there. `TV_HOST` / `TV_BRAND` are honoured only as a one-shot
+bootstrap when no TVs exist yet.
 
 ### Docker Compose (preferred)
 
 ```bash
 cd server
-TV_HOST=LGwebOSTV docker compose up -d
+docker compose up -d
+# then browse to http://<PI_IP>:8765/ and add your TVs
 ```
 
 The compose file builds the image, runs it as a non-root user with read-only
-rootfs and dropped capabilities, persists the LG pairing key in a named
-volume (`lg-key`), and adds a healthcheck against `/health`.
+rootfs and dropped capabilities, persists config + pairing keys in a named
+volume (`lg-key` — kept as-is for upgrade compatibility, despite now holding
+all backend keys), and adds a healthcheck against `/health`.
 
 ### Docker (manual)
 
@@ -119,18 +154,18 @@ docker build -t firesleep-bridge .
 docker run -d --name firesleep-bridge \
   --restart unless-stopped \
   -p 8765:8765 \
-  -e TV_HOST=LGwebOSTV \
-  -e LG_KEY_FILE=/data/lg_key.json \
-  -v firesleep-key:/data \
+  -v lg-key:/data \
   firesleep-bridge
 ```
 
 ### systemd
 
-Drop env vars into `/etc/firesleep-bridge/env`:
+`/etc/firesleep-bridge/env` is optional — leave it empty and configure via
+the web UI, or pre-seed a single bootstrap TV:
 
 ```
 TV_HOST=LGwebOSTV
+TV_BRAND=lg
 ```
 
 Install `firesleep-bridge.service` into `/etc/systemd/system/` and:
@@ -144,23 +179,25 @@ sudo systemctl enable --now firesleep-bridge
 
 ```bash
 curl http://<PI_IP>:8765/health
-# => {"ok": true, "paired": true}
+# => {"ok": true}
+
+curl http://<PI_IP>:8765/tvs
+# => [{"id":"ab12cd34","name":"Living room","brand":"lg",...,"paired":true}, ...]
 
 curl -X POST http://<PI_IP>:8765/poweroff
-# TV powers off, => {"ok": true}
+# Every configured TV powers off, => {"ok": true, "results": [...]}
 ```
 
 ## Configuration
 
-| Env var       | Required | Purpose                                                                       |
-|---------------|----------|-------------------------------------------------------------------------------|
-| `TV_HOST`     | yes      | TV (LG) or Fire TV hostname/IP — resolved at every connect                    |
-| `TV_BRAND`    | no       | `lg` (default) or `firetv`. Picks which backend handles `/poweroff`.          |
-| `LG_KEY_FILE` | no       | Path to the cached LG pairing key file                                        |
-| `LOG_LEVEL`   | no       | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`                                 |
+| Env var    | Purpose                                                                            |
+|------------|------------------------------------------------------------------------------------|
+| `TV_HOST`  | First-run bootstrap. Creates one TV if none exist yet. Ignored thereafter.         |
+| `TV_BRAND` | First-run bootstrap. `lg` (default) or `firetv`.                                   |
+| `LOG_LEVEL`| `DEBUG`, `INFO` (default), `WARNING`, `ERROR`. Override at runtime via the web UI. |
 
-`TV_BRAND` and `TV_HOST` can also be set from the web UI; the saved value
-in `/data/config.json` takes precedence over env on subsequent restarts.
+Persistent state lives in `/data/config.json` (TV list + log level) plus
+the per-TV pairing keys (`lg_key_<id>.json`, `adb_key{,.pub}`).
 
 ## Logs
 
