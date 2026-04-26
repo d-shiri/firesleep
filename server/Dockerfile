@@ -19,7 +19,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
-COPY bridge.py bridge_firetv.py ./
+COPY bridge.py bridge_lg.py bridge_firetv.py ./
 COPY web ./web
 
 USER app
