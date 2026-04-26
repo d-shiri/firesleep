@@ -1,4 +1,21 @@
-# FireSleep — a real sleep timer for your TV, driven by the Fire TV remote
+<p align="center">
+  <img src="images/logo.png" alt="FireSleep" width="320">
+</p>
+
+<h1 align="center">FireSleep</h1>
+
+<p align="center">
+  <em>A real sleep timer for your TV, driven by the Fire TV remote.</em>
+</p>
+
+<p align="center">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Fire%20TV-orange">
+  <img alt="Bridge" src="https://img.shields.io/badge/bridge-FastAPI%20%2B%20Docker-blue">
+  <img alt="No cloud" src="https://img.shields.io/badge/cloud-none-success">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey">
+</p>
+
+---
 
 Most TVs hide their sleep timer in a settings menu you can only reach with the
 TV's own remote. If you watch through a Fire TV Stick, that means juggling two
@@ -10,14 +27,32 @@ second remote, no cloud, no account: your TV, your Pi, your LAN.
 
 ## How it works
 
-```
-Fire TV remote → FireSleep app (android/) → HTTP POST → bridge on Pi (server/) → TV powers off
+```mermaid
+flowchart LR
+    R(["📺 Fire TV remote"]) --> A
+    subgraph FT["Fire TV Stick"]
+      A["FireSleep app<br/><sub>android/ — AlarmManager + foreground service</sub>"]
+    end
+    A -- "HTTP POST /poweroff" --> B
+    subgraph PI["Raspberry Pi (LAN)"]
+      B["FireSleep bridge<br/><sub>server/ — FastAPI + per-vendor backend</sub>"]
+    end
+    B -- "WebSocket" --> LG["LG webOS TV"]
+    B -- "ADB → CEC" --> ST["Samsung / Sony / Vizio<br/>Hisense / Roku TVs"]
 ```
 
 The Fire TV app owns the timer (`AlarmManager` behind a foreground service, so
 it survives backgrounding and doze). The Pi owns the TV-vendor bits (pairing,
 WebSocket chatter). Adding a new TV brand is a change to `server/`, not the
 app.
+
+## Features
+
+- ⏱ **Real sleep timer** — survives backgrounding, doze, and the screensaver.
+- 🔌 **Actually powers the TV off** — not just the Fire TV.
+- 🎮 **Triple-press ≡ Menu** to bring up the timer from any app (Netflix, YouTube, …).
+- 📺 **Multi-TV** — fan out one power-off to every TV on your LAN.
+- 🛜 **No cloud, no account, no analytics** — talks only to your Pi on `:8765`.
 
 ## Tested
 
@@ -82,3 +117,17 @@ setup.
 - The bridge has no remote auth — it trusts whoever can reach it on the LAN.
   Don't port-forward `8765`.
 - Nothing leaves your LAN. No cloud, no analytics, no phone-home.
+
+## Contributing
+
+Bug reports and PRs are welcome — especially new TV-vendor bridges. Open an
+issue first if it's a bigger change so we can talk through the shape.
+
+## License & disclaimer
+
+[MIT](LICENSE). FireSleep is provided **as-is**, with no warranty and no
+liability — it pokes at your TV's power state over the network, and you run
+it at your own risk. Not affiliated with Amazon, LG, Samsung, or any other
+vendor mentioned here; trademarks belong to their respective owners.
+
+<p align="center"><sub>Built for people who fall asleep with the TV on.</sub></p>
