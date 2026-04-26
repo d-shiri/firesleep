@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,7 +90,8 @@ fun SettingsScreen(onSaved: () -> Unit, onBack: () -> Unit = {}) {
             LogoEyebrow()
             Text("Settings", style = heroHeadline().copy(fontSize = 56.sp))
             Text(
-                "Point FireSleep at the Raspberry Pi that powers your TV off.",
+                "Point FireSleep at the Raspberry Pi that runs the TV bridge. " +
+                    "Pair each TV from the Pi's web UI.",
                 style = body(Tokens.TextMuted),
             )
 
@@ -111,20 +113,9 @@ fun SettingsScreen(onSaved: () -> Unit, onBack: () -> Unit = {}) {
                         val client = TvClient(TvClient.baseUrlFor(ip.trim()))
                         status = "Reaching the Pi…"
                         val h = withContext(Dispatchers.IO) { client.health() }
-                        h.fold(
-                            onSuccess = { health ->
-                                if (health.paired) {
-                                    status = "Reached the Pi ✓ — TV already paired."
-                                } else {
-                                    status = "Reached the Pi ✓ — accept the pairing prompt on your TV…"
-                                    val p = withContext(Dispatchers.IO) { client.pair() }
-                                    status = p.fold(
-                                        onSuccess = { "Paired ✓" },
-                                        onFailure = { "Pairing failed: ${it.message}" },
-                                    )
-                                }
-                            },
-                            onFailure = { status = "Couldn't reach the Pi: ${it.message}" },
+                        status = h.fold(
+                            onSuccess = { "Reached the Pi ✓" },
+                            onFailure = { "Couldn't reach the Pi: ${it.message}" },
                         )
                     }
                 }
@@ -139,11 +130,15 @@ fun SettingsScreen(onSaved: () -> Unit, onBack: () -> Unit = {}) {
                 style = eyebrowSmall(Tokens.TextDim),
             )
             Text(
-                "Press the ≡ Menu button three times from any app to open FireSleep. " +
-                    "Enable it under Settings → Accessibility → FireSleep.",
+                "Press the ≡ Menu button three times from any app to open FireSleep.",
                 style = body(Tokens.TextMuted).copy(fontSize = 20.sp),
             )
-            Row {
+
+            var triggerStatus by remember { mutableStateOf(triggerStatusText(context)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                PrimaryButton("Enable triple-press shortcut") {
+                    triggerStatus = enableTriplePressTrigger(context)
+                }
                 SecondaryButton("Open Accessibility settings") {
                     runCatching {
                         context.startActivity(
@@ -153,16 +148,52 @@ fun SettingsScreen(onSaved: () -> Unit, onBack: () -> Unit = {}) {
                     }
                 }
             }
+            if (triggerStatus.isNotBlank()) {
+                Text(triggerStatus, style = body(Tokens.TextMuted))
+            }
             Text(
-                "If FireSleep doesn't appear in Accessibility on Fire TV, enable it once over ADB:\n" +
-                    "  adb shell settings put secure enabled_accessibility_services " +
-                    "com.firesleep.app/com.firesleep.app.access.FireSleepAccessibilityService\n" +
-                    "  adb shell settings put secure accessibility_enabled 1",
+                "First time on Fire TV? Run this once over ADB to grant the permission, " +
+                    "then tap Enable above:\n" +
+                    "  adb shell pm grant com.firesleep.app android.permission.WRITE_SECURE_SETTINGS",
                 style = body(Tokens.TextDim).copy(fontSize = 16.sp, fontFamily = Tokens.Mono),
             )
             Spacer(Modifier.height(8.dp))
             Text("◀ Back to return", style = body(Tokens.TextDim).copy(fontSize = 16.sp))
         }
+    }
+}
+
+private const val ACCESSIBILITY_COMPONENT =
+    "com.firesleep.app/com.firesleep.app.access.FireSleepAccessibilityService"
+
+private fun isTriplePressEnabled(context: Context): Boolean {
+    val enabled = Settings.Secure.getString(
+        context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+    ).orEmpty()
+    return enabled.split(':').any { it == ACCESSIBILITY_COMPONENT }
+}
+
+private fun triggerStatusText(context: Context): String =
+    if (isTriplePressEnabled(context)) "Triple-press is active ✓" else ""
+
+private fun enableTriplePressTrigger(context: Context): String {
+    if (isTriplePressEnabled(context)) return "Triple-press is active ✓"
+    return runCatching {
+        val resolver = context.contentResolver
+        val current = Settings.Secure.getString(
+            resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        ).orEmpty()
+        val merged = if (current.isBlank()) ACCESSIBILITY_COMPONENT
+        else "$current:$ACCESSIBILITY_COMPONENT"
+        Settings.Secure.putString(
+            resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, merged,
+        )
+        Settings.Secure.putInt(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+        if (isTriplePressEnabled(context)) "Triple-press is active ✓"
+        else "Couldn't enable — grant WRITE_SECURE_SETTINGS via ADB first (see below)."
+    }.getOrElse { e ->
+        "Couldn't enable: ${e.message ?: e::class.simpleName}. " +
+            "Grant WRITE_SECURE_SETTINGS via ADB (see below) and retry."
     }
 }
 
