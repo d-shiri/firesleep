@@ -59,7 +59,9 @@ app.
 - **LG webOS** (UR78 / webOS 23) — works end-to-end.
 - **Samsung** — works end-to-end.
 - **Fire TV Stick 4K Max** — primary dev target; should work on any Fire TV
-  (minSdk 22).
+  Stick on Fire OS 6+ (minSdk 22).
+- **Fire TV Stick 1st/2nd Gen (Fire OS 5)** — app + timer + bridge work, but
+  the triple-press shortcut does not (see below).
 
 PRs welcome for Sony, Vizio, Hisense, Roku TVs — drop a sibling bridge file
 next to `server/bridge.py` and document pairing in `server/README.md`.
@@ -95,6 +97,19 @@ ADB:
 adb shell settings put secure enabled_accessibility_services com.firesleep.app/com.firesleep.app.access.FireSleepAccessibilityService
 adb shell settings put secure accessibility_enabled 1
 ```
+
+### Fire OS 5 (Fire TV Stick 1st/2nd Gen) — not supported
+
+The triple-press shortcut requires **Fire OS 6 or newer** (Fire TV Stick 4K,
+4K Max, Cube, etc.). On Fire OS 5 sticks (Fire TV Stick 1st/2nd Gen, Fire TV
+Stick Basic Edition) Amazon both hides the Accessibility toggle *and* actively
+strips third-party entries from `enabled_accessibility_services` within
+seconds of any ADB write — there's no reliable way to keep the service
+bound.
+
+The rest of the app still works on Fire OS 5: install it, pin it to the home
+row, and open it from the launcher to set a timer. The bridge-driven TV
+power-off works the same.
 
 ## Repo layout
 
